@@ -5,15 +5,13 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "scheme": "fitlens",
-    "newArchEnabled": true,
-    "ios": {
+    "scheme": "fitlens",    "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fitlens.app"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#34D399"
       },
       "package": "com.fitlens.app",
@@ -37,7 +35,8 @@
         {
           "photosPermission": "FitLens 需要访问相册以选择餐食图片。"
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "tsconfigPaths": true
