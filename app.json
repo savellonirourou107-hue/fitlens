@@ -19,9 +19,10 @@
       "package": "com.fitlens.app",
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -40,6 +41,13 @@
     ],
     "experiments": {
       "tsconfigPaths": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ae28a343-c5c5-46a7-be00-ae53647211ae"
+      }
+    },
+    "owner": "lidongyang"
   }
 }
