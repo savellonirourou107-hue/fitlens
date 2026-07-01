@@ -18,10 +18,10 @@ export const foodItemSchema = z.object({
 });
 
 /**
- * 一餐识别结果：至少识别出一个食物。
+ * 一餐识别结果：items 数组（可为空——非食物图片时 AI 应返回空数组）。
  */
 export const mealRecognitionSchema = z.object({
-  items: z.array(foodItemSchema).min(1, '至少识别出一个食物'),
+  items: z.array(foodItemSchema),
 });
 
 /**

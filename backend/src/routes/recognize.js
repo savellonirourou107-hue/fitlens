@@ -42,6 +42,19 @@ router.post('/meal', upload.single('image'), async (req, res) => {
       });
     }
 
+    // 非食物图片：items 为空时返回友好提示
+    if (parsed.data.items.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          items: [],
+          modelVersion: raw?.modelVersion,
+          processingMs,
+          message: '未在图片中识别到食物，请换一张餐食照片',
+        },
+      });
+    }
+
     return res.json({
       success: true,
       data: {

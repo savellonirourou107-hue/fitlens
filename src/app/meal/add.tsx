@@ -87,9 +87,14 @@ export default function MealAddScreen() {
         source: 'ai',
       }));
       setItems((prev) => [...prev, ...aiItems]);
-      const total = aiItems.reduce((s, i) => s + i.caloriesKcal, 0);
-      setRecognizeStatus('ok');
-      setRecognizeMsg(`AI 识别完成：识别出 ${aiItems.length} 个食物项，合计约 ${Math.round(total)} kcal。可在下方逐项查看/修改份量与营养素。`);
+      if (aiItems.length === 0) {
+        setRecognizeStatus('fail');
+        setRecognizeMsg(data.message || '未在图片中识别到食物，请换一张餐食照片重试。');
+      } else {
+        const total = aiItems.reduce((s, i) => s + i.caloriesKcal, 0);
+        setRecognizeStatus('ok');
+        setRecognizeMsg(`AI 识别完成：识别出 ${aiItems.length} 个食物项，合计约 ${Math.round(total)} kcal。可在下方逐项查看/修改份量与营养素。`);
+      }
     } catch (e) {
       setRecognizeStatus('fail');
       setRecognizeMsg(e instanceof Error ? e.message : '请检查网络或重试');

@@ -183,12 +183,13 @@ export async function recognizeMeal(imageBase64, mimeType = 'image/jpeg') {
   const model = process.env.MINIMAX_VISION_MODEL || 'MiniMax-M3';
 
   const prompt =
-    '你是一名营养分析师。请识别这张餐食图片中的食物，' +
+    '你是一名营养分析师。请识别这张图片中的食物，' +
     '估算每项食物的份量（克）、热量（千卡）以及宏量营养素（蛋白质/碳水/脂肪，克）。' +
     '只返回纯 JSON，不要包含任何 markdown 代码块或额外说明文字。' +
     'JSON 结构如下：\n' +
     '{"items":[{"name":"食物名","portionGrams":数值,"caloriesKcal":数值,"proteinG":数值,"carbsG":数值,"fatG":数值}],"modelVersion":"MiniMax-M3"}\n' +
-    '其中数值使用数字类型（不要加引号）。若无法识别某项，省略该项。';
+    '其中数值使用数字类型（不要加引号）。若无法识别某项，省略该项。' +
+    '如果图片中没有任何食物（例如风景、人物、截图、纯色图等），返回 {"items":[]} （空数组）。';
 
   const startedAt = Date.now();
   const raw = await callVision(prompt, imageBase64, mimeType);
@@ -196,13 +197,31 @@ export async function recognizeMeal(imageBase64, mimeType = 'image/jpeg') {
 
   const parsed = parseModelJson(raw);
 
-  const items = Array.isArray(parsed.items) ? parsed.items : [];
+  // 规范化：确保 items 是数组，且每项字段为合法数值
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  const items = rawItems
+    .filter((it) => it && typeof it.name === 'string' && it.name.trim())
+    .map((it) => ({
+      name: String(it.name).trim().slice(0, 80),
+      portionGrams: numOr(it.portionGrams),
+      caloriesKcal: numOr(it.caloriesKcal),
+      proteinG: numOr(it.proteinG),
+      carbsG: numOr(it.carbsG),
+      fatG: numOr(it.fatG),
+    }));
+
   const modelVersion =
     typeof parsed.modelVersion === 'string' && parsed.modelVersion
       ? parsed.modelVersion
       : model;
 
   return { items, modelVersion, processingMs };
+}
+
+/** 把任意值转成非负数字，非法则返回 0 */
+function numOr(v) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 /**

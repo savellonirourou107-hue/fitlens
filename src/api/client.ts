@@ -24,6 +24,7 @@ export interface MealRecognitionData {
   items: RecognizedFoodItem[];
   modelVersion: string;
   processingMs: number;
+  message?: string;
 }
 
 /** 运动识别结果 */
