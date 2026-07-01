@@ -4,7 +4,7 @@
  *
  * 上传文件策略（兼容 Android/iOS/Web）：
  * - 上传前用 expo-image-manipulator 把图片最长边压到 1280px、quality 0.8
- * - Android: 用 expo-file-system 读取本地文件为 Blob，再 append 到 FormData
+ * - Android: 用 SDK 56 新 `new File(uri)`（本身就是 Blob）直接 append 到 FormData
  * - Web:     用 fetch(blob:uri) 取 Blob，再 append
  * 这样避开了 RN FormData 在 Android 上不支持 {uri,name,type} 对象格式的坑
  * (报错: "Unsupported FormData implementation")
@@ -14,7 +14,7 @@
  * MIME 推断：优先用 ImagePickerAsset.mimeType / fileName 后缀，避免错把 jpg 当 jpeg 上传失败
  */
 
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const DEFAULT_BASE_URL =
@@ -188,8 +188,8 @@ export async function compressImage(
 
 /**
  * 把本地图片 uri 转成 multipart FormData。
- * Android: 用 expo-file-system 读取为 Blob（兼容 RN Android）。
- * Web:     用 fetch(blob:uri) 转 Blob。
+ * Android/iOS: SDK 56 新 `new File(uri)` 本身就是 Blob，直接 append。
+ * Web:         fetch(blob:uri) 转 Blob。
  */
 async function buildFormData(imageUri: string, mime: string): Promise<FormData> {
   const filename = deriveFilename(imageUri, mime);
@@ -221,7 +221,8 @@ function deriveFilename(imageUri: string, mime: string): string {
 
 /**
  * 把任意图片 uri 转为 Blob。
- * - file:// 开头（Android/iOS）: 用 expo-file-system 读 base64 再 atob 转 Uint8Array → Blob
+ * - file:// 开头（Android/iOS）: 用 SDK 56 新 `new File(uri)`，File 本身就是 Blob，
+ *   直接 append 到 FormData，无需 base64 → Uint8Array 中转
  * - blob: 开头（Web）: fetch(blob:uri) 拿 Blob
  * - http(s)://（罕见）: 直接 fetch
  */
@@ -237,27 +238,14 @@ async function uriToBlob(uri: string, mime: string): Promise<Blob> {
     return await res.blob();
   }
   // Android/iOS 本地文件: file://, content://, ph:// 等
-  // expo-file-system 读 base64 (新 API：FileSystem.readAsStringAsync with encoding)
+  // SDK 56: new File(uri) 继承 Blob，可直接 append 到 FormData
   try {
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64' as any,
-    });
-    return base64ToBlob(base64, mime);
+    return new File(uri) as unknown as Blob;
   } catch (e) {
     throw new Error(
       `读取图片失败: ${e instanceof Error ? e.message : String(e)} (uri=${uri.slice(0, 60)}…)`,
     );
   }
-}
-
-/** base64 字符串 → Blob */
-function base64ToBlob(base64: string, mime: string): Blob {
-  const byteChars = atob(base64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) {
-    bytes[i] = byteChars.charCodeAt(i);
-  }
-  return new Blob([bytes], { type: mime });
 }
 
 /** 根据文件名/uri 后缀推断 MIME，没匹配则返回 '' */
