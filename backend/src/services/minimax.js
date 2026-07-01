@@ -190,7 +190,8 @@ export async function recognizeMeal(imageBase64, mimeType = 'image/jpeg') {
     'JSON 结构如下：\n' +
     '{"items":[{"name":"食物名","portionGrams":数值,"caloriesKcal":数值,"proteinG":数值,"carbsG":数值,"fatG":数值}],"modelVersion":"MiniMax-M3"}\n' +
     '其中数值使用数字类型（不要加引号）。若无法识别某项，省略该项。' +
-    '如果图片中没有任何食物（例如风景、人物、截图、纯色图等），返回 {"items":[]} （空数组）。';
+    '如果图片中没有任何食物（例如风景、人物、截图、纯色图等），返回 {"items":[]} （空数组）。' +
+    '最后请给出一段温暖、带 Emoji 符号的专业营养师点评（不超过 60 字），放入 comment 字段。例：这是一顿健康的午餐！蛋白质丰富 🥩🥦';
 
   const startedAt = Date.now();
   const raw = await callVision(prompt, imageBase64, mimeType);
@@ -216,7 +217,12 @@ export async function recognizeMeal(imageBase64, mimeType = 'image/jpeg') {
       ? parsed.modelVersion
       : model;
 
-  return { items, modelVersion, processingMs };
+  const comment =
+    typeof parsed.comment === 'string' && parsed.comment.trim()
+      ? parsed.comment.trim().slice(0, 200)
+      : '';
+
+  return { items, modelVersion, processingMs, comment };
 }
 
 /** 把任意值转成非负数字，非法则返回 0 */

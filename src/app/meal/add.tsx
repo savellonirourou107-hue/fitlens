@@ -35,6 +35,8 @@ export default function MealAddScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [items, setItems] = useState<FoodItem[]>([]);
   const [notes, setNotes] = useState('');
+  /** AI 营养顾问点评（最近一次识别返回的） */
+  const [aiComment, setAiComment] = useState('');
   const [recognizing, setRecognizing] = useState(false);
   const [recognizePhase, setRecognizePhase] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
   const [recognizeStatus, setRecognizeStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
@@ -77,6 +79,7 @@ export default function MealAddScreen() {
     setRecognizePhase('uploading');
     setRecognizeStatus('idle');
     setRecognizeMsg('');
+    setAiComment('');
     try {
       // 上传/压缩阶段短暂显示；后端返回开始分析时切到 analyzing
       const data = await recognizeMealImage(uri, asset);
@@ -92,6 +95,7 @@ export default function MealAddScreen() {
         source: 'ai',
       }));
       setItems((prev) => [...prev, ...aiItems]);
+      setAiComment((data.comment ?? '').trim());
       if (aiItems.length === 0) {
         setRecognizeStatus('fail');
         setRecognizeMsg('未识别到清晰的食物。请换一张光线更好的照片，或手动添加。');
@@ -230,6 +234,16 @@ export default function MealAddScreen() {
             </Text>
             <Text style={styles.summaryMacro}>
               蛋白 {Math.round(macros.protein)}g · 碳水 {Math.round(macros.carbs)}g · 脂肪 {Math.round(macros.fat)}g
+            </Text>
+          </View>
+        )}
+
+        {/* AI 营养顾问点评卡片 */}
+        {items.length > 0 && aiComment && (
+          <View style={styles.aiCommentCard}>
+            <Text style={styles.aiCommentEmoji}>🍱</Text>
+            <Text style={styles.aiCommentText} numberOfLines={2}>
+              {aiComment}
             </Text>
           </View>
         )}
@@ -512,6 +526,25 @@ const styles = StyleSheet.create({
   resultFail: { backgroundColor: theme.colors.danger + '15' },
   resultIcon: { fontSize: 16, marginTop: 2 },
   resultMsg: { flex: 1, fontSize: theme.fontSizes.sm, color: theme.colors.text, lineHeight: 20 },
+  // AI 营养顾问点评：圆角 + 毛玻璃（半透明 surfaceMuted）+ 阴影
+  aiCommentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surfaceMuted + 'CC', // 80% 不透，模拟毛玻璃
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+    ...theme.shadow.card,
+  },
+  aiCommentEmoji: { fontSize: 32, marginRight: theme.spacing.md },
+  aiCommentText: {
+    flex: 1,
+    fontSize: theme.fontSizes.sm,
+    color: theme.colors.text,
+    lineHeight: 21,
+  },
   manualToggle: {
     paddingVertical: theme.spacing.md, alignItems: 'center',
     backgroundColor: theme.colors.surface, borderRadius: theme.radius.md,

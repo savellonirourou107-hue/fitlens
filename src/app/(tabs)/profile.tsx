@@ -15,7 +15,7 @@ import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
 import type { UserProfile, Sex, ActivityLevel, Goal } from '../../types';
 import { ACTIVITY_LEVELS, GOALS } from '../../types';
-import { bmrMifflinStJeor, tdee, dailyTargetKcal, macroTargets } from '../../core/calc';
+import { bmrHarrisBenedict, tdee, dailyTargetKcal, macroTargets } from '../../core/calc';
 import { format } from 'date-fns';
 
 const SEX_OPTIONS: { value: Sex; label: string; icon: string }[] = [
@@ -78,7 +78,7 @@ export default function ProfileScreen() {
     createdAt: '',
     updatedAt: '',
   };
-  const bmr = bmrMifflinStJeor({ sex: tempProfile.sex, weightKg: tempProfile.weightKg, heightCm: tempProfile.heightCm, birthYear: tempProfile.birthYear });
+  const bmr = bmrHarrisBenedict({ sex: tempProfile.sex, weightKg: tempProfile.weightKg, heightCm: tempProfile.heightCm, birthYear: tempProfile.birthYear });
   const tdeeVal = tdee(tempProfile);
   const targetKcal = dailyTargetKcal(tempProfile);
   const macros = macroTargets(targetKcal, tempProfile.weightKg);

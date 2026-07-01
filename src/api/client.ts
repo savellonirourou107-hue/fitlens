@@ -3,7 +3,7 @@
  * 后端地址通过环境变量或默认值配置。API Key 只在后端，前端不接触。
  *
  * 上传文件策略（兼容 Android/iOS/Web）：
- * - 上传前用 expo-image-manipulator 把图片最长边压到 1280px、quality 0.8
+ * - 上传前用 expo-image-manipulator 把图片最长边压到 1024px、quality 0.8
  * - Android: 用 SDK 56 新 `new File(uri)`（本身就是 Blob）直接 append 到 FormData
  * - Web:     用 fetch(blob:uri) 取 Blob，再 append
  * 这样避开了 RN FormData 在 Android 上不支持 {uri,name,type} 对象格式的坑
@@ -46,6 +46,8 @@ export interface MealRecognitionData {
   modelVersion: string;
   processingMs: number;
   message?: string;
+  /** AI 营养顾问点评（后端新增，可选） */
+  comment?: string;
 }
 
 /** 运动识别结果 */
@@ -164,7 +166,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
 }
 
 /**
- * 上传前压缩图片。最长边 1280px，quality 0.8，统一 JPEG。
+ * 上传前压缩图片。最长边 1024px，quality 0.8，统一 JPEG。
  * 压缩失败则降级用原 uri（不阻断识别流程）。
  */
 export async function compressImage(
@@ -175,7 +177,7 @@ export async function compressImage(
   try {
     const result = await manipulateAsync(
       imageUri,
-      [{ resize: { width: 1280, height: 1280 } }],
+      [{ resize: { width: 1024, height: 1024 } }],
       { compress: 0.8, format: SaveFormat.JPEG },
     );
     return { uri: result.uri, mime: 'image/jpeg' };

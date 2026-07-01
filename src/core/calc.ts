@@ -23,17 +23,20 @@ export function ageFromBirthYear(birthYear: number, now: Date = new Date()): num
   return differenceInYears(now, new Date(birthYear, 0, 1));
 }
 
-/** Mifflin-St Jeor BMR 公式（单位 kcal/day） */
-export function bmrMifflinStJeor(
+/** Harris-Benedict BMR 公式（修订版 1984，单位 kcal/day）
+ *  男: BMR = 88.362 + 13.397 * weightKg + 4.799 * heightCm - 5.677 * age
+ *  女: BMR = 447.593 + 9.247 * weightKg + 3.098 * heightCm - 4.330 * age
+ */
+export function bmrHarrisBenedict(
   profile: Pick<UserProfile, 'sex' | 'weightKg' | 'heightCm' | 'birthYear'>,
   now: Date = new Date(),
 ): number {
   const age = ageFromBirthYear(profile.birthYear, now);
   const { sex, weightKg, heightCm } = profile;
   if (sex === 'male') {
-    return Math.round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
+    return Math.round(88.362 + 13.397 * weightKg + 4.799 * heightCm - 5.677 * age);
   }
-  return Math.round(10 * weightKg + 6.25 * heightCm - 5 * age - 161);
+  return Math.round(447.593 + 9.247 * weightKg + 3.098 * heightCm - 4.330 * age);
 }
 
 /** 从 ActivityLevel 查活动系数 */
@@ -45,7 +48,7 @@ export function activityFactor(level: ActivityLevel): number {
 
 /** 总每日能量消耗 TDEE（kcal/day） */
 export function tdee(profile: UserProfile, now: Date = new Date()): number {
-  return Math.round(bmrMifflinStJeor(profile, now) * activityFactor(profile.activityLevel));
+  return Math.round(bmrHarrisBenedict(profile, now) * activityFactor(profile.activityLevel));
 }
 
 /** 根据目标计算每周热量缺口（kcal/week） */

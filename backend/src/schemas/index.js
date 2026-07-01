@@ -22,6 +22,7 @@ export const foodItemSchema = z.object({
  */
 export const mealRecognitionSchema = z.object({
   items: z.array(foodItemSchema),
+  comment: z.string().optional(),
 });
 
 /**

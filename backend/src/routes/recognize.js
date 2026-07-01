@@ -50,6 +50,7 @@ router.post('/meal', upload.single('image'), async (req, res) => {
           items: [],
           modelVersion: raw?.modelVersion,
           processingMs,
+          comment: raw?.comment || '',
           message: '未在图片中识别到食物，请换一张餐食照片',
         },
       });
@@ -61,6 +62,7 @@ router.post('/meal', upload.single('image'), async (req, res) => {
         items: parsed.data.items,
         modelVersion: raw?.modelVersion,
         processingMs,
+        comment: raw?.comment || '',
       },
     });
   } catch (err) {

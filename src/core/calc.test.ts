@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ageFromBirthYear,
-  bmrMifflinStJeor,
+  bmrHarrisBenedict,
   activityFactor,
   tdee,
   weeklyDeficitKcal,
@@ -24,22 +24,25 @@ describe('ageFromBirthYear', () => {
   });
 });
 
-describe('bmrMifflinStJeor', () => {
-  it('男性 25岁 175cm 75kg 约 1724 kcal', () => {
-    const bmr = bmrMifflinStJeor(
+describe('bmrHarrisBenedict', () => {
+  it('男性 25岁 175cm 75kg 约 1780 kcal', () => {
+    const bmr = bmrHarrisBenedict(
       { sex: 'male', weightKg: 75, heightCm: 175, birthYear: 2001 },
       NOW,
     );
-    expect(bmr).toBe(1724);
+    // 男: 88.362 + 13.397*75 + 4.799*175 - 5.677*25
+    //   = 88.362 + 1004.775 + 839.825 - 141.925 = 1791.037 -> round 1791
+    expect(bmr).toBe(1791);
   });
 
-  it('女性同参数比男性少约 166（-161 公式项，约 1558）', () => {
-    const bmr = bmrMifflinStJeor(
+  it('女性同参数低于男性', () => {
+    const bmr = bmrHarrisBenedict(
       { sex: 'female', weightKg: 75, heightCm: 175, birthYear: 2001 },
       NOW,
     );
-    // 男性 unrounded 1723.75, 女性公式 = round(1723.75 - 166) = round(1557.75) = 1558
-    expect(bmr).toBe(1558);
+    // 女: 447.593 + 9.247*75 + 3.098*175 - 4.330*25
+    //   = 447.593 + 693.525 + 542.15 - 108.25 = 1575.018 -> round 1575
+    expect(bmr).toBe(1575);
   });
 });
 
@@ -67,8 +70,8 @@ describe('tdee', () => {
       createdAt: '',
       updatedAt: '',
     };
-    // BMR 1724 * 1.2 = 2068.8 -> round 2069
-    expect(tdee(profile, NOW)).toBe(2069);
+    // BMR 1791 * 1.2 = 2149.2 -> round 2149
+    expect(tdee(profile, NOW)).toBe(2149);
   });
 });
 
@@ -97,25 +100,25 @@ describe('dailyTargetKcal', () => {
   };
 
   it('maintain 时等于 tdee', () => {
-    expect(dailyTargetKcal({ ...base, goal: 'maintain' }, NOW)).toBe(2069);
+    expect(dailyTargetKcal({ ...base, goal: 'maintain' }, NOW)).toBe(2149);
   });
 
   it('loss 时 = tdee - 3850/7', () => {
     const target = dailyTargetKcal({ ...base, goal: 'loss' }, NOW);
-    // 2069 - 3850/7 = 2069 - 550 = 1519
-    expect(target).toBe(1519);
+    // 2149 - 3850/7 = 2149 - 550 = 1599
+    expect(target).toBe(1599);
   });
 });
 
 describe('macroTargets', () => {
   it('蛋白质=1.8*weight, 脂肪=target*0.25/9, 碳水剩余/4', () => {
-    const target = 1519;
+    const target = 1599;
     const weight = 75;
     const split = macroTargets(target, weight);
     expect(split.protein).toBe(Math.round(1.8 * 75)); // 135
-    expect(split.fat).toBe(Math.round((target * 0.25) / 9)); // round(42.19) = 42
-    const remaining = target - 135 * 4 - 42 * 9; // 1519 - 540 - 378 = 601
-    expect(split.carbs).toBe(Math.round(Math.max(0, remaining) / 4)); // round(150.25)=150
+    expect(split.fat).toBe(Math.round((target * 0.25) / 9)); // round(44.42) = 44
+    const remaining = target - 135 * 4 - 44 * 9; // 1599 - 540 - 396 = 663
+    expect(split.carbs).toBe(Math.round(Math.max(0, remaining) / 4)); // round(165.75)=166
   });
 });
 
