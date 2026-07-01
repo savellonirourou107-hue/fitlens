@@ -22,3 +22,4 @@ services:
       - key: CORS_ORIGIN
         value: "*"
       # MINIMAX_API_KEY 必须在 Render 控制台手动填入，不写这里
+# trigger redeploy 1782879558
