@@ -16,7 +16,7 @@ import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
 import { genId } from '../../core/id';
 import { exerciseCalories } from '../../core/calc';
-import { recognizeExerciseImage } from '../../api/client';
+import { AI_PRIVACY_NOTICE, recognizeExerciseImage } from '../../api/client';
 import * as ImagePicker from 'expo-image-picker';
 import { format } from 'date-fns';
 import type { ExerciseEntry, Intensity, ExerciseType } from '../../types';
@@ -31,7 +31,10 @@ export default function ExerciseScreenshotScreen() {
   const addExercise = useAppStore((s) => s.addExercise);
 
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [pendingAsset, setPendingAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [recognizing, setRecognizing] = useState(false);
+  const [recognizePhase, setRecognizePhase] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
+  const [recognizeError, setRecognizeError] = useState<string | null>(null);
   const [recognized, setRecognized] = useState<{
     type: ExerciseType;
     durationMin: number;
@@ -53,30 +56,43 @@ export default function ExerciseScreenshotScreen() {
         : await ImagePicker.launchImageLibraryAsync(options);
     if (!result.canceled && result.assets[0]?.uri) {
       setImageUri(result.assets[0].uri);
+      setPendingAsset(result.assets[0]);
       setRecognized(null);
+      setRecognizeError(null);
     }
   };
 
   /** 调后端 AI 识别运动截图字段 */
   const handleRecognize = async () => {
     if (!imageUri) {
-      Alert.alert('提示', '请先选择运动软件截图');
+      setRecognizeError('请先选择运动软件截图');
       return;
     }
     setRecognizing(true);
+    setRecognizePhase('uploading');
+    setRecognizeError(null);
     try {
-      const data = await recognizeExerciseImage(imageUri);
-      setRecognized({
-        type: data.type,
-        durationMin: data.durationMin,
-        caloriesBurnedKcal: data.caloriesBurnedKcal,
-        source: data.source,
-        rawText: data.rawText,
-      });
+      const data = await recognizeExerciseImage(imageUri, pendingAsset);
+      setRecognizePhase('analyzing');
+      // 时长/热量都为 0 时视为无效识别
+      if (!data.type || (data.durationMin <= 0 && data.caloriesBurnedKcal <= 0)) {
+        setRecognizeError('未识别到运动结果。请确认截图中包含运动时长/消耗页面，或手动填写。');
+        setRecognized(null);
+      } else {
+        setRecognized({
+          type: data.type,
+          durationMin: data.durationMin,
+          caloriesBurnedKcal: data.caloriesBurnedKcal,
+          source: data.source,
+          rawText: data.rawText,
+        });
+      }
     } catch (e) {
-      Alert.alert('识别失败', e instanceof Error ? e.message : '未知错误');
+      setRecognizeError(e instanceof Error ? e.message : '识别失败，请重试');
+      setRecognized(null);
     } finally {
       setRecognizing(false);
+      setRecognizePhase('idle');
     }
   };
 
@@ -105,7 +121,7 @@ export default function ExerciseScreenshotScreen() {
       createdAt: new Date().toISOString(),
     };
     addExercise(entry);
-    Alert.alert('已保存', `已记录运动，消耗 ${burned} kcal`, [
+    Alert.alert('已保存', `已记录运动，消耗 ${Math.round(burned)} kcal`, [
       { text: '好的', onPress: () => router.back() },
     ]);
   };
@@ -117,7 +133,7 @@ export default function ExerciseScreenshotScreen() {
         {/* 截图选择 */}
         <Card style={styles.section}>
           <Text style={styles.sectionLabel}>运动软件截图</Text>
-          <Text style={styles.sectionHint}>支持 Keep、喜忌、华为运动健康等截图</Text>
+          <Text style={styles.sectionHint}>支持 Keep、咕咚、华为运动健康等截图</Text>
           <View style={styles.imageRow}>
             {imageUri ? (
               <Image source={{ uri: imageUri }} style={styles.thumbnail} resizeMode="cover" />
@@ -143,13 +159,24 @@ export default function ExerciseScreenshotScreen() {
             {recognizing ? (
               <View style={styles.aiBtnContent}>
                 <ActivityIndicator color={theme.colors.textInverse} size="small" />
-                <Text style={styles.aiBtnText}>AI 识别中…</Text>
+                <Text style={styles.aiBtnText}>
+                  {recognizePhase === 'uploading' ? '上传图片…' : 'AI 识别中…'}
+                </Text>
               </View>
             ) : (
               <Text style={styles.aiBtnText}>✨ AI 识别截图字段</Text>
             )}
           </Pressable>
+          <Text style={styles.privacyNotice}>{AI_PRIVACY_NOTICE}</Text>
         </Card>
+
+        {/* 识别失败红色横幅（避免用 Alert.web 不稳） */}
+        {recognizeError && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorMsg}>{recognizeError}</Text>
+          </View>
+        )}
 
         {/* 识别结果 */}
         {recognized && (
@@ -168,7 +195,7 @@ export default function ExerciseScreenshotScreen() {
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>消耗</Text>
               <Text style={[styles.resultValue, { color: theme.colors.accent }]}>
-                {recognized.caloriesBurnedKcal} kcal
+                {Math.round(recognized.caloriesBurnedKcal)} kcal
               </Text>
             </View>
             {recognized.source ? (
@@ -183,7 +210,7 @@ export default function ExerciseScreenshotScreen() {
                 <Text style={styles.rawText}>{recognized.rawText}</Text>
               </View>
             ) : null}
-            <Text style={styles.tipText}>结果可手动修正，保存即记录今日运动。</Text>
+            <Text style={styles.tipText}>AI 估算值，请根据实际运动情况修正后保存。</Text>
           </Card>
         )}
 
@@ -260,6 +287,26 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.md,
     fontWeight: theme.fontWeights.semibold,
   },
+  privacyNotice: {
+    fontSize: theme.fontSizes.xs,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    lineHeight: 18,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    width: '100%',
+    backgroundColor: theme.colors.danger + '15',
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.md,
+  },
+  errorIcon: { fontSize: 16, marginTop: 2 },
+  errorMsg: { flex: 1, fontSize: theme.fontSizes.sm, color: theme.colors.text, lineHeight: 20 },
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

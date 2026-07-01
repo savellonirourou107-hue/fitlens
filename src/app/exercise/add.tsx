@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Camera } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
@@ -134,7 +135,7 @@ export default function ExerciseAddScreen() {
         <Card style={styles.section}>
           <Text style={styles.sectionLabel}>预估消耗</Text>
           <View style={styles.burnedRow}>
-            <Text style={styles.burnedNum}>{calories}</Text>
+            <Text style={styles.burnedNum}>{Math.round(calories)}</Text>
             <Text style={styles.burnedUnit}>kcal</Text>
           </View>
           <Text style={styles.burnedHint}>
@@ -148,7 +149,10 @@ export default function ExerciseAddScreen() {
         </Pressable>
 
         <Pressable style={styles.screenshotLink} onPress={() => router.push('/exercise/screenshot')}>
-          <Text style={styles.screenshotLinkText}>📷 用运动截图识别 →</Text>
+          <View style={styles.screenshotLinkInner}>
+            <Camera size={16} color={theme.colors.primaryDark} style={styles.screenshotLinkIcon} />
+            <Text style={styles.screenshotLinkText}>用运动截图识别 →</Text>
+          </View>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -254,5 +258,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeights.semibold,
   },
   screenshotLink: { marginTop: theme.spacing.md, paddingVertical: theme.spacing.sm, alignItems: 'center' },
+  screenshotLinkInner: { flexDirection: 'row', alignItems: 'center' },
+  screenshotLinkIcon: { marginRight: theme.spacing.xs },
   screenshotLinkText: { color: theme.colors.primaryDark, fontSize: theme.fontSizes.sm },
 });

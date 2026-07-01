@@ -5,9 +5,14 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "scheme": "fitlens",    "ios": {
+    "scheme": "fitlens",
+    "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fitlens.app"
+      "bundleIdentifier": "com.fitlens.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "FitLens 需要访问相册，用于选择餐食照片或运动截图进行识别。",
+        "NSCameraUsageDescription": "FitLens 需要使用相机，用于拍摄餐食照片或运动截图进行识别。"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,9 +23,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.INTERNET"
       ]
     },
     "web": {
@@ -33,7 +36,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "FitLens 需要访问相册以选择餐食图片。"
+          "photosPermission": "FitLens 需要访问相册，用于选择餐食照片或运动截图进行识别。",
+          "cameraPermission": "FitLens 需要使用相机，用于拍摄餐食照片进行识别。",
+          "microphonePermission": false
         }
       ],
       "expo-status-bar"

@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Camera as CameraIcon, Image as ImageIcon, Utensils } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
@@ -23,7 +24,7 @@ import { MEAL_TYPE_LABELS } from '../../types';
 import type { Meal, FoodItem, MealType } from '../../types';
 import * as ImagePicker from 'expo-image-picker';
 import { format } from 'date-fns';
-import { recognizeMealImage } from '../../api/client';
+import { AI_PRIVACY_NOTICE, recognizeMealImage } from '../../api/client';
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -35,6 +36,7 @@ export default function MealAddScreen() {
   const [items, setItems] = useState<FoodItem[]>([]);
   const [notes, setNotes] = useState('');
   const [recognizing, setRecognizing] = useState(false);
+  const [recognizePhase, setRecognizePhase] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
   const [recognizeStatus, setRecognizeStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
   const [recognizeMsg, setRecognizeMsg] = useState('');
   const [showManual, setShowManual] = useState(false);
@@ -65,17 +67,20 @@ export default function MealAddScreen() {
         : await ImagePicker.launchImageLibraryAsync(options);
 
     if (result.canceled || !result.assets[0]?.uri) return;
-    const uri = result.assets[0].uri;
-    setImageUri(uri);
-    await runRecognize(uri);
+    const asset = result.assets[0];
+    setImageUri(asset.uri);
+    await runRecognize(asset.uri, asset);
   };
 
-  const runRecognize = async (uri: string) => {
+  const runRecognize = async (uri: string, asset?: ImagePicker.ImagePickerAsset) => {
     setRecognizing(true);
+    setRecognizePhase('uploading');
     setRecognizeStatus('idle');
     setRecognizeMsg('');
     try {
-      const data = await recognizeMealImage(uri);
+      // 上传/压缩阶段短暂显示；后端返回开始分析时切到 analyzing
+      const data = await recognizeMealImage(uri, asset);
+      setRecognizePhase('analyzing');
       const aiItems: FoodItem[] = data.items.map((it) => ({
         id: genId('food_'),
         name: it.name,
@@ -89,17 +94,18 @@ export default function MealAddScreen() {
       setItems((prev) => [...prev, ...aiItems]);
       if (aiItems.length === 0) {
         setRecognizeStatus('fail');
-        setRecognizeMsg(data.message || '未在图片中识别到食物，请换一张餐食照片重试。');
+        setRecognizeMsg('未识别到清晰的食物。请换一张光线更好的照片，或手动添加。');
       } else {
         const total = aiItems.reduce((s, i) => s + i.caloriesKcal, 0);
         setRecognizeStatus('ok');
-        setRecognizeMsg(`AI 识别完成：识别出 ${aiItems.length} 个食物项，合计约 ${Math.round(total)} kcal。可在下方逐项查看/修改份量与营养素。`);
+        setRecognizeMsg(`AI 估算值，请根据实际份量修正后保存（识别出 ${aiItems.length} 项，合计约 ${Math.round(total)} kcal）。`);
       }
     } catch (e) {
       setRecognizeStatus('fail');
       setRecognizeMsg(e instanceof Error ? e.message : '请检查网络或重试');
     } finally {
       setRecognizing(false);
+      setRecognizePhase('idle');
     }
   };
 
@@ -175,7 +181,9 @@ export default function MealAddScreen() {
               {recognizing && (
                 <View style={styles.overlay}>
                   <ActivityIndicator color="#fff" size="large" />
-                  <Text style={styles.overlayText}>AI 识别中…</Text>
+                  <Text style={styles.overlayText}>
+                    {recognizePhase === 'uploading' ? '上传图片…' : 'AI 识别中…'}
+                  </Text>
                 </View>
               )}
               <Pressable
@@ -188,17 +196,20 @@ export default function MealAddScreen() {
             </View>
           ) : (
             <View style={styles.cameraPlaceholder}>
-              <Text style={styles.cameraEmoji}>📷</Text>
+              <CameraIcon size={48} color={theme.colors.primary} style={styles.cameraEmoji} />
               <Text style={styles.cameraTitle}>拍照识别餐食</Text>
               <Text style={styles.cameraHint}>拍一张餐食照片，AI 自动识别食物和热量</Text>
               <View style={styles.cameraBtnRow}>
                 <Pressable style={[styles.cameraBtn, styles.cameraBtnPrimary]} onPress={() => pickAndRecognize(true)}>
-                  <Text style={styles.cameraBtnText}>📷 拍照</Text>
+                  <CameraIcon size={18} color="#fff" style={styles.cameraBtnIcon} />
+                  <Text style={styles.cameraBtnText}>拍照</Text>
                 </Pressable>
                 <Pressable style={[styles.cameraBtn, styles.cameraBtnSecondary]} onPress={() => pickAndRecognize(false)}>
-                  <Text style={styles.cameraBtnText}>🖼 相册</Text>
+                  <ImageIcon size={18} color="#fff" style={styles.cameraBtnIcon} />
+                  <Text style={styles.cameraBtnText}>相册</Text>
                 </Pressable>
               </View>
+              <Text style={styles.privacyNotice}>{AI_PRIVACY_NOTICE}</Text>
             </View>
           )}
         </View>
@@ -215,10 +226,10 @@ export default function MealAddScreen() {
         {items.length > 0 && (
           <View style={styles.summaryBar}>
             <Text style={styles.summaryText}>
-              共 {items.length} 项 · <Text style={styles.summaryKcal}>{totalKcal} kcal</Text>
+              共 {items.length} 项 · <Text style={styles.summaryKcal}>{Math.round(totalKcal)} kcal</Text>
             </Text>
             <Text style={styles.summaryMacro}>
-              蛋白 {macros.protein}g · 碳水 {macros.carbs}g · 脂肪 {macros.fat}g
+              蛋白 {Math.round(macros.protein)}g · 碳水 {Math.round(macros.carbs)}g · 脂肪 {Math.round(macros.fat)}g
             </Text>
           </View>
         )}
@@ -240,18 +251,19 @@ export default function MealAddScreen() {
               >
                 <View style={styles.foodInfo}>
                   <View style={styles.foodNameRow}>
+                    <Utensils size={18} color={theme.colors.textMuted} style={styles.foodIcon} />
                     <Text style={styles.foodName}>{it.name}</Text>
                     {it.source === 'ai' && <Text style={styles.aiTag}>AI</Text>}
                   </View>
-                  <Text style={styles.foodMeta}>份量 {it.portionGrams}g</Text>
+                  <Text style={styles.foodMeta}>份量 {Math.round(it.portionGrams)}g</Text>
                   <View style={styles.macroRow}>
-                    <Text style={[styles.macroChip, { color: theme.colors.primary }]}>蛋白 {it.proteinG}g</Text>
-                    <Text style={[styles.macroChip, { color: theme.colors.secondary }]}>碳水 {it.carbsG}g</Text>
-                    <Text style={[styles.macroChip, { color: theme.colors.accent }]}>脂肪 {it.fatG}g</Text>
+                    <Text style={[styles.macroChip, { color: theme.colors.primary }]}>蛋白 {Math.round(it.proteinG)}g</Text>
+                    <Text style={[styles.macroChip, { color: theme.colors.secondary }]}>碳水 {Math.round(it.carbsG)}g</Text>
+                    <Text style={[styles.macroChip, { color: theme.colors.accent }]}>脂肪 {Math.round(it.fatG)}g</Text>
                   </View>
                 </View>
                 <View style={styles.foodRight}>
-                  <Text style={styles.foodKcal}>{it.caloriesKcal}</Text>
+                  <Text style={styles.foodKcal}>{Math.round(it.caloriesKcal)}</Text>
                   <Text style={styles.foodKcalUnit}>kcal</Text>
                   <Text style={styles.editHint}>点击修改</Text>
                 </View>
@@ -424,12 +436,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cameraEmoji: { fontSize: 48, marginBottom: theme.spacing.sm },
+  cameraBtnIcon: { marginRight: theme.spacing.xs },
   cameraTitle: { fontSize: theme.fontSizes.lg, fontWeight: theme.fontWeights.semibold, color: theme.colors.text },
   cameraHint: { fontSize: theme.fontSizes.sm, color: theme.colors.textMuted, marginTop: theme.spacing.xs, textAlign: 'center', marginBottom: theme.spacing.md },
   cameraBtnRow: { flexDirection: 'row', gap: theme.spacing.md, marginTop: theme.spacing.xs },
   cameraBtn: {
     paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.xl,
     borderRadius: theme.radius.pill, alignItems: 'center',
+    flexDirection: 'row',
   },
   cameraBtnPrimary: { backgroundColor: theme.colors.primary },
   cameraBtnSecondary: { backgroundColor: theme.colors.secondary },
@@ -449,6 +463,14 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
   },
   reRecognizeText: { color: '#fff', fontSize: theme.fontSizes.sm, fontWeight: '600' },
+  privacyNotice: {
+    fontSize: theme.fontSizes.xs,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    lineHeight: 18,
+  },
   summaryBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: theme.colors.primary + '15',
@@ -468,6 +490,7 @@ const styles = StyleSheet.create({
   },
   foodInfo: { flex: 1, marginRight: theme.spacing.sm },
   foodNameRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+  foodIcon: { marginRight: 2 },
   foodName: { fontSize: theme.fontSizes.md, color: theme.colors.text, fontWeight: '500' },
   aiTag: {
     fontSize: theme.fontSizes.xs, color: theme.colors.primary, fontWeight: '600',

@@ -310,15 +310,15 @@ export default function ProfileScreen() {
           <View style={styles.macroRow}>
             <View style={styles.macroItem}>
               <View style={[styles.macroDot, { backgroundColor: theme.colors.primary }]} />
-              <Text style={styles.macroLabel}>蛋白质 {macros.protein}g</Text>
+              <Text style={styles.macroLabel}>蛋白质 {Math.round(macros.protein)}g</Text>
             </View>
             <View style={styles.macroItem}>
               <View style={[styles.macroDot, { backgroundColor: theme.colors.secondary }]} />
-              <Text style={styles.macroLabel}>碳水 {macros.carbs}g</Text>
+              <Text style={styles.macroLabel}>碳水 {Math.round(macros.carbs)}g</Text>
             </View>
             <View style={styles.macroItem}>
               <View style={[styles.macroDot, { backgroundColor: theme.colors.accent }]} />
-              <Text style={styles.macroLabel}>脂肪 {macros.fat}g</Text>
+              <Text style={styles.macroLabel}>脂肪 {Math.round(macros.fat)}g</Text>
             </View>
           </View>
         </Card>

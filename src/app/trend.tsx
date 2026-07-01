@@ -89,15 +89,15 @@ export default function TrendScreen() {
           {trend.map((s) => (
             <View key={s.date} style={styles.dayRow}>
               <Text style={styles.dayDate}>{format(parseISO(s.date), 'MM-dd')}</Text>
-              <Text style={styles.dayCell}>摄入 {s.intakeKcal}</Text>
-              <Text style={styles.dayCell}>消耗 {s.burnedKcal}</Text>
+              <Text style={styles.dayCell}>摄入 {Math.round(s.intakeKcal)}</Text>
+              <Text style={styles.dayCell}>消耗 {Math.round(s.burnedKcal)}</Text>
               <Text
                 style={[
                   styles.dayCell,
                   { color: s.deficitKcal < 0 ? theme.colors.success : theme.colors.danger },
                 ]}
               >
-                缺口 {s.deficitKcal}
+                缺口 {Math.round(s.deficitKcal)}
               </Text>
             </View>
           ))}
