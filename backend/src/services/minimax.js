@@ -70,7 +70,8 @@ function parseModelJson(raw) {
     }
   }
 
-  throw new Error(`无法从模型回复中解析 JSON: ${raw.slice(0, 200)}`);
+  // 兜底：模型可能没返回任何 JSON（例如纯文字描述），视为空结果
+  return { items: [] };
 }
 
 /**
