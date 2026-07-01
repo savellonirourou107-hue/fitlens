@@ -10,9 +10,8 @@ import recognizeRouter from './routes/recognize.js';
 
 const app = express();
 
-// CORS 白名单：CORS_ORIGIN 逗号分隔；未配置则允许全部来源
-const origins = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
-app.use(cors({ origin: origins.length ? origins : true }));
+// CORS：允许所有来源（识别服务公开可用，无需白名单）
+app.use(cors());
 
 app.use(express.json({ limit: '10mb' }));
 

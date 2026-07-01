@@ -16,7 +16,7 @@ import {
   buildDailySummaryFromMeals,
   lastNDays,
 } from '../core/calc';
-import { genId } from '../core/id';
+import * as repo from '../core/repository';
 
 export interface AppState {
   profile: UserProfile | null;
@@ -35,6 +35,7 @@ export interface AppState {
   removeDiary: (id: string) => void;
   getDiaryByDate: (date: string) => DiaryEntry | undefined;
   setHydrated: (b: boolean) => void;
+  hydrateFromDb: () => Promise<void>;
   getMealsByDate: (date: string) => Meal[];
   getExercisesByDate: (date: string) => ExerciseEntry[];
   getDailySummary: (date: string) => DailySummary;
@@ -48,21 +49,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   diaries: [],
   hydrated: false,
 
-  setProfile: (p) => set({ profile: p }),
-  addMeal: (meal) => set((state) => ({ meals: [...state.meals, meal] })),
+  setProfile: (p) => {
+    set({ profile: p });
+    void repo.saveProfile(p).catch((e) => console.error('saveProfile failed', e));
+  },
+  addMeal: (meal) => {
+    set((state) => ({ meals: [...state.meals, meal] }));
+    void repo.saveMeal(meal).catch((e) => console.error('saveMeal failed', e));
+  },
   updateMeal: (id, patch) =>
     set((state) => ({
       meals: state.meals.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     })),
-  removeMeal: (id) =>
-    set((state) => ({ meals: state.meals.filter((m) => m.id !== id) })),
-  addExercise: (e) =>
-    set((state) => ({ exercises: [...state.exercises, e] })),
-  removeExercise: (id) =>
+  removeMeal: (id) => {
+    set((state) => ({ meals: state.meals.filter((m) => m.id !== id) }));
+    void repo.deleteMealDb(id).catch((e) => console.error('deleteMeal failed', e));
+  },
+  addExercise: (e) => {
+    set((state) => ({ exercises: [...state.exercises, e] }));
+    void repo.saveExercise(e).catch((err) => console.error('saveExercise failed', err));
+  },
+  removeExercise: (id) => {
     set((state) => ({
       exercises: state.exercises.filter((x) => x.id !== id),
-    })),
-  upsertDiary: (diary) =>
+    }));
+    void repo.deleteExerciseDb(id).catch((e) => console.error('deleteExercise failed', e));
+  },
+  upsertDiary: (diary) => {
     set((state) => {
       const exists = state.diaries.some((d) => d.date === diary.date);
       return {
@@ -70,11 +83,29 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? state.diaries.map((d) => (d.date === diary.date ? diary : d))
           : [...state.diaries, diary],
       };
-    }),
-  removeDiary: (id) =>
-    set((state) => ({ diaries: state.diaries.filter((d) => d.id !== id) })),
+    });
+    void repo.upsertDiaryDb(diary).catch((e) => console.error('upsertDiary failed', e));
+  },
+  removeDiary: (id) => {
+    set((state) => ({ diaries: state.diaries.filter((d) => d.id !== id) }));
+    void repo.deleteDiaryDb(id).catch((e) => console.error('deleteDiary failed', e));
+  },
   getDiaryByDate: (date) => get().diaries.find((d) => d.date === date),
   setHydrated: (b) => set({ hydrated: b }),
+  hydrateFromDb: async () => {
+    try {
+      const [profile, meals, exercises, diaries] = await Promise.all([
+        repo.loadProfile(),
+        repo.loadAllMeals(),
+        repo.loadAllExercises(),
+        repo.loadAllDiaries(),
+      ]);
+      set({ profile, meals, exercises, diaries, hydrated: true });
+    } catch (e) {
+      console.error('hydrateFromDb failed', e);
+      set({ hydrated: true });
+    }
+  },
 
   getMealsByDate: (date) => get().meals.filter((m) => m.date === date),
   getExercisesByDate: (date) =>

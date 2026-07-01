@@ -9,10 +9,11 @@ export default function RootLayout() {
     (async () => {
       try {
         await initDb();
+        await useAppStore.getState().hydrateFromDb();
       } catch (e) {
-        console.error('db init failed', e);
+        console.error('db init or hydrate failed', e);
+        useAppStore.getState().setHydrated(true);
       }
-      useAppStore.getState().setHydrated(true);
     })();
   }, []);
 
