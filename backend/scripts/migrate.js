@@ -25,6 +25,38 @@ if (!process.env.DATABASE_URL) {
 
 const sql = neon(process.env.DATABASE_URL);
 
+/**
+ * 简单 SQL 切分：按 `;` 切，忽略空行和注释。
+ * 注意：DO $$ ... $$ 块里有 `;` 但不会被切分（因为 $$ 是成对的）
+ */
+function splitSql(content) {
+  // 去掉行注释
+  const cleaned = content
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+  const statements = [];
+  let buf = '';
+  let inDollarQuote = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const two = cleaned.substr(i, 2);
+    if (two === '$$') {
+      inDollarQuote = !inDollarQuote;
+      buf += two;
+      i++;
+      continue;
+    }
+    if (cleaned[i] === ';' && !inDollarQuote) {
+      statements.push(buf);
+      buf = '';
+    } else {
+      buf += cleaned[i];
+    }
+  }
+  if (buf.trim()) statements.push(buf);
+  return statements;
+}
+
 async function run() {
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
@@ -43,8 +75,12 @@ async function run() {
     const content = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
     console.log(`▶ Running ${file}...`);
     try {
-      // neon() 的 sql.query() 支持多条 SQL 串
-      await sql.query(content);
+      // neon() 的 sql.query() 是 prepared statement，不支持多语句
+      // 按 `;` 切分后逐条执行（忽略空语句和 DO $$ 块）
+      const statements = splitSql(content);
+      for (const stmt of statements) {
+        if (stmt.trim()) await sql.query(stmt);
+      }
       console.log(`  ✔ ${file} done`);
     } catch (e) {
       console.error(`  ✖ ${file} failed:`, e.message);
