@@ -8,7 +8,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import sql from '../db.js';
-import { signToken } from '../auth.js';
+import { signToken, requireAuth } from '../auth.js';
 import { error, ok, randomString } from '../utils.js';
 
 const router = Router();
@@ -98,8 +98,8 @@ router.post('/login', async (req, res) => {
   });
 });
 
-/** GET /auth/me - 需要 requireAuth 中间件（在 index.js 装） */
-router.get('/me', async (req, res) => {
+/** GET /auth/me - 需要 requireAuth */
+router.get('/me', requireAuth, async (req, res) => {
   const rows = await sql`
     SELECT id, email, nickname, avatar_seed, created_at, updated_at
     FROM users WHERE id = ${req.userId} LIMIT 1
@@ -140,7 +140,7 @@ router.post('/refresh', async (req, res) => {
 });
 
 /** DELETE /auth/me - 注销账号（删除用户，级联删除 friendships + daily_summaries） */
-router.delete('/me', async (req, res) => {
+router.delete('/me', requireAuth, async (req, res) => {
   await sql`DELETE FROM users WHERE id = ${req.userId}`;
   return ok(res, { deleted: true });
 });

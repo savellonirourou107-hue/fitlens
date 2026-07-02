@@ -27,11 +27,9 @@ app.get('/health', (req, res) =>
   res.json({ ok: true, service: 'fitlens-backend' }),
 );
 
-// /auth/register 和 /auth/login 公开，其他 /auth/* 需要登录
-app.post('/auth/register', authRouter);
-app.post('/auth/login', authRouter);
-app.post('/auth/refresh', authRouter);
-app.use('/auth', requireAuth, authRouter); // GET /me, DELETE /me
+// /auth/* 全部走 authRouter，public（register/login/refresh）已在 router 内部无中间件
+// GET /me 和 DELETE /me 在 router 内部自己 requireAuth
+app.use('/auth', authRouter);
 
 // 好友 + 同步全部需要登录
 app.use('/friends', requireAuth, friendsRouter);
