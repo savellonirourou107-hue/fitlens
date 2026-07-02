@@ -126,8 +126,7 @@ router.post('/request', async (req, res) => {
   // 无记录 → INSERT
   const inserted = await sql`
     INSERT INTO friendships (user_low_id, user_high_id, requester_id, addressee_id, status)
-    VALUES (LEAST(${req.userId}, ${target}), GREATEST(${req.userId}, ${target}),
-            ${req.userId}, ${target}, 'pending')
+    VALUES (${low}, ${high}, ${req.userId}, ${target}, 'pending')
     RETURNING id, status
   `;
   return ok(res, { friendshipId: inserted[0].id, status: inserted[0].status }, 201);
