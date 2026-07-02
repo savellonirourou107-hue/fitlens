@@ -232,7 +232,21 @@ async function callLLM(messages, opts = {}) {
   if (typeof content !== 'string') {
     throw new Error('MiniMax 响应结构异常');
   }
-  return content;
+  // 剥离多模态模型的 <think>...</think> 推理过程（只给用户最终答案）
+  return stripThinkTags(content);
+}
+
+/**
+ * 去掉 M3（带 reasoning 的多模态模型）返回的 <think>...</think> 推理块
+ * - 保留标签外的内容
+ * - 不区分大小写，允许空白
+ */
+function stripThinkTags(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .trim();
 }
 
 /**
