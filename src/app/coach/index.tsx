@@ -6,13 +6,14 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  View, Text, TextInput, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Animated, Easing,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Send, Trash2, Sparkles } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { useCoachStore } from '../../store/useCoachStore';
+import { ThinkingDots } from '../../components/ThinkingDots';
 
 export default function CoachScreen() {
   const messages = useCoachStore((s) => s.messages);
@@ -27,6 +28,8 @@ export default function CoachScreen() {
 
   const [input, setInput] = useState('');
   const listRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
+  const inputBarBottomPad = Math.max(insets.bottom, 8);
 
   useEffect(() => {
     loadHistory();
@@ -87,9 +90,13 @@ export default function CoachScreen() {
           renderItem={({ item }) => (
             <View style={[styles.bubbleRow, item.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAi]}>
               <View style={[styles.bubble, item.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}>
-                <Text style={[styles.bubbleText, item.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextAi]}>
-                  {item.content}
-                </Text>
+                {item.isThinking ? (
+                  <ThinkingDots text="小 F 正在思考" />
+                ) : (
+                  <Text style={[styles.bubbleText, item.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextAi]}>
+                    {item.content}
+                  </Text>
+                )}
               </View>
             </View>
           )}
@@ -104,7 +111,7 @@ export default function CoachScreen() {
           }
         />
 
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { paddingBottom: theme.spacing.md + inputBarBottomPad }]}>
           <TextInput
             style={styles.input}
             value={input}
@@ -158,7 +165,8 @@ const styles = StyleSheet.create({
   emptyHint: { fontSize: theme.fontSizes.sm, color: theme.colors.textMuted, textAlign: 'center', lineHeight: 22, marginTop: theme.spacing.sm },
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end', gap: theme.spacing.sm,
-    padding: theme.spacing.md, backgroundColor: theme.colors.surface,
+    paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
     borderTopWidth: 1, borderTopColor: theme.colors.border,
   },
   input: {

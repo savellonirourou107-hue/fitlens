@@ -1,6 +1,6 @@
 {
   "name": "fitlens",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "main": "expo-router/entry",
   "dependencies": {
     "date-fns": "^4.4.0",

@@ -2,7 +2,7 @@
   "expo": {
     "name": "FitLens",
     "slug": "fitlens",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "fitlens",

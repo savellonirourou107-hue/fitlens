@@ -13,6 +13,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  /** 占位气泡：LLM 还没回复时显示思考动画 */
+  isThinking?: boolean;
 }
 
 interface CoachState {
@@ -59,28 +61,41 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       return null;
     }
     set({ error: null, loading: 'sending' });
-    // 立即追加用户消息（乐观 UI）
+    // 1) 立即追加用户消息
     const tempUserMsg: ChatMessage = {
-      id: 'tmp-' + Date.now(),
+      id: 'tmp-u-' + Date.now(),
       role: 'user',
       content: trimmed,
       createdAt: new Date().toISOString(),
     };
-    set((s) => ({ messages: [...s.messages, tempUserMsg] }));
+    // 2) 立即追加"小 F 正在思考"占位
+    const thinkingMsg: ChatMessage = {
+      id: 'tmp-t-' + Date.now(),
+      role: 'assistant',
+      content: '',
+      createdAt: new Date().toISOString(),
+      isThinking: true,
+    };
+    set((s) => ({ messages: [...s.messages, tempUserMsg, thinkingMsg] }));
     try {
       const { reply, remaining } = await coachApi.sendChat(trimmed);
+      // 3) 替换占位为真实回复
       const assistantMsg: ChatMessage = {
-        id: 'tmp-' + (Date.now() + 1),
+        id: 'tmp-a-' + Date.now(),
         role: 'assistant',
         content: reply,
         createdAt: new Date().toISOString(),
       };
-      set((s) => ({ messages: [...s.messages, assistantMsg], remaining, loading: 'idle' }));
+      set((s) => ({
+        messages: s.messages.map((m) => (m.id === thinkingMsg.id ? assistantMsg : m)),
+        remaining,
+        loading: 'idle',
+      }));
       return reply;
     } catch (e) {
-      // 失败时把临时用户消息移除
+      // 失败时移除用户消息 + 占位
       set((s) => ({
-        messages: s.messages.filter((m) => m.id !== tempUserMsg.id),
+        messages: s.messages.filter((m) => m.id !== tempUserMsg.id && m.id !== thinkingMsg.id),
         loading: 'idle',
         error: e instanceof NetworkError
           ? '教练暂时不可用'
