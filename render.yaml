@@ -1,25 +1,41 @@
-# Render Blueprint 配置
-# 部署后请在 Render 控制台设置环境变量 MINIMAX_API_KEY（不要写进此文件）
+# Render Blueprint 配置（v0.5）
+#
+# ⚠️ 敏感密钥绝不能写进此文件
+# Render 控制台（Settings → Environment）必须手动设置：
+#   - DATABASE_URL              Neon Postgres 连接串（含 ?sslmode=require）
+#   - JWT_SECRET                随机 64 字符（openssl rand -hex 32）
+#   - MINIMAX_API_KEY           MiniMax 视觉模型 API key
+#   - CORS_ALLOWED_ORIGINS      逗号分隔的白名单 origin
+#
+# 不要把这些值 commit 到 git！
 
 services:
   - type: web
     name: fitlens-backend
     runtime: node
     plan: free
-    region: singapore   # 新加坡，离中国较近
+    region: singapore
     rootDir: backend
-    buildCommand: npm install
+    # build 时先 migrate 再启服务
+    buildCommand: npm install && npm run migrate
     startCommand: node src/index.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 22.0.0
+      - key: NODE_ENV
+        value: production
       - key: MINIMAX_API_HOST
         value: https://api.minimaxi.com
       - key: MINIMAX_VISION_MODEL
         value: MiniMax-M3
-      - key: CORS_ORIGIN
-        value: "*"
-      # MINIMAX_API_KEY 必须在 Render 控制台手动填入，不写这里
-# trigger redeploy 1782879558
+      # CORS_ALLOWED_ORIGINS 默认值（部署后建议改成实际前端 origin）
+      - key: CORS_ALLOWED_ORIGINS
+        value: "http://localhost:8081,http://localhost:19006"
+      # DATABASE_URL 和 JWT_SECRET 必须在 Render 控制台手动填入
+      # MINIMAX_API_KEY 也必须手动填入
+      # secretFiles:  # 备选：用 Render Secret Files 管理敏感文件
+      #   - filename: .env
+      #     content: ...
+# trigger redeploy
