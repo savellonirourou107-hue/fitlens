@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
-import { Mars, Venus, type LucideIcon, ChevronRight, Settings as SettingsIcon } from 'lucide-react-native';
+import { Mars, Venus, type LucideIcon, ChevronRight, Settings as SettingsIcon, Sparkles } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
@@ -137,6 +137,13 @@ export default function ProfileScreen() {
                 <Pressable style={styles.accountLink} accessibilityLabel="账号设置">
                   <SettingsIcon size={16} color={theme.colors.textMuted} />
                   <Text style={styles.accountLinkText}>账号设置</Text>
+                  <ChevronRight size={16} color={theme.colors.textMuted} />
+                </Pressable>
+              </Link>
+              <Link href="/coach" asChild>
+                <Pressable style={styles.accountLink} accessibilityLabel="AI 教练">
+                  <Sparkles size={16} color={theme.colors.primary} />
+                  <Text style={[styles.accountLinkText, { color: theme.colors.primary }]}>AI 减脂教练</Text>
                   <ChevronRight size={16} color={theme.colors.textMuted} />
                 </Pressable>
               </Link>

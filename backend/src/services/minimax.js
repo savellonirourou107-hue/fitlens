@@ -173,6 +173,69 @@ async function callVision(prompt, imageBase64, mimeType) {
 }
 
 /**
+ * 内部辅助：调用 MiniMax 纯文字 chat/completions（无图片，复用 M3 视觉模型的多模态能力）
+ *
+ * @param {Array<{role: 'system'|'user'|'assistant', content: string}>} messages
+ * @param {object} [opts] - { maxTokens, temperature }
+ * @returns {Promise<string>} 模型文本回复
+ */
+async function callLLM(messages, opts = {}) {
+  const apiKey = process.env.MINIMAX_API_KEY;
+  const apiHost = process.env.MINIMAX_API_HOST || 'https://api.minimaxi.com';
+  const model = process.env.MINIMAX_VISION_MODEL || 'MiniMax-M3';
+
+  if (!apiKey) throw new Error('缺少环境变量 MINIMAX_API_KEY');
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error('messages 不能为空');
+  }
+
+  const url = `${apiHost.replace(/\/+$/, '')}/v1/chat/completions`;
+  const body = {
+    model,
+    messages,
+    max_tokens: opts.maxTokens ?? 400,
+    temperature: opts.temperature ?? 0.7,
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error('MiniMax 请求超时（30s）');
+    }
+    throw new Error(`MiniMax 请求失败: ${err && err.message ? err.message : String(err)}`);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch (_) { /* ignore */ }
+    throw new Error(`MiniMax HTTP ${res.status}: ${detail.slice(0, 500)}`);
+  }
+
+  const data = await res.json();
+  const content =
+    data?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') {
+    throw new Error('MiniMax 响应结构异常');
+  }
+  return content;
+}
+
+/**
  * 餐食识别：根据餐食图片估算食物项与营养数据。
  *
  * @param {string} imageBase64 - 图片 base64 数据（不含 data: 前缀）
@@ -285,4 +348,76 @@ export async function recognizeExercise(imageBase64, mimeType = 'image/jpeg') {
   };
 }
 
-export default { recognizeMeal, recognizeExercise };
+export default { recognizeMeal, recognizeExercise, chatCoach, callLLM };
+
+/* ==================== AI 教练（聊天）==================== */
+
+/**
+ * 系统 prompt：限制 LLM 只能聊减脂/营养/运动
+ * - 不索取明细食物/体重/身份
+ * - 不给医疗/极端节食建议
+ * - 不允许比较他人数据
+ */
+const COACH_SYSTEM_PROMPT = `你是 FitLens 减脂助手，名字叫"小 F"。
+你的职责：根据用户提供的今日/本周热量数据，给出**温和、专业、个性化**的减脂/营养/运动建议。
+
+**严格遵守的边界**：
+1. 你只能回答**减脂、营养、运动**相关的问题
+2. **不要**询问、推测、记录用户的：具体吃了什么食物名称、体重数值、身高、年龄、身份信息
+3. **不要**提供任何医疗诊断、药物建议、极端节食方案（如日摄入 < 800 kcal）
+4. **不要**和其他用户比较、排名、评判
+5. 如果用户问与减脂无关的问题（感情、工作、闲聊等），礼貌地引导回减脂话题
+6. 回复控制在 100 字以内，简明扼要，必要时用 1-2 个 emoji
+7. 涉及医学/疾病问题，必须建议用户咨询医生
+
+**用户语境**（服务端拼好传给你）：
+- 今日摄入 kcal
+- 今日消耗 kcal
+- 目标 kcal
+- 近 7 天摄入/消耗/目标趋势
+- 净摄入（摄入 - 消耗）作为参考
+
+基于这些数字，**只输出建议**，不要重复数字本身。`;
+
+/**
+ * 教练聊天：调用 LLM 拿回复
+ *
+ * @param {string} userMessage - 用户发的当前消息
+ * @param {Array<{role:'user'|'assistant', content:string}>} history - 历史消息
+ * @param {object} userContext - { intakeKcal, burnedKcal, targetKcal, weekTrend[] }
+ * @returns {Promise<string>} 教练回复
+ */
+export async function chatCoach(userMessage, history = [], userContext = {}) {
+  if (!userMessage || typeof userMessage !== 'string') {
+    throw new Error('userMessage 不能为空');
+  }
+
+  // 拼装用户语境（简短摘要，绝不传明细）
+  const ctxLines = [
+    `今日摄入: ${Math.round(userContext.intakeKcal ?? 0)} kcal`,
+    `今日消耗: ${Math.round(userContext.burnedKcal ?? 0)} kcal`,
+    `今日目标: ${Math.round(userContext.targetKcal ?? 0)} kcal`,
+  ];
+  if (Array.isArray(userContext.weekTrend) && userContext.weekTrend.length > 0) {
+    const avgIntake = Math.round(
+      userContext.weekTrend.reduce((s, d) => s + (d.intakeKcal || 0), 0) / userContext.weekTrend.length
+    );
+    const avgBurned = Math.round(
+      userContext.weekTrend.reduce((s, d) => s + (d.burnedKcal || 0), 0) / userContext.weekTrend.length
+    );
+    ctxLines.push(`近 7 天均值: 摄入 ${avgIntake} kcal, 消耗 ${avgBurned} kcal`);
+  }
+  const contextBlock = '【用户语境】\n' + ctxLines.join('\n');
+
+  // 限制历史长度（最多 6 轮）
+  const recentHistory = Array.isArray(history) ? history.slice(-6) : [];
+
+  const messages = [
+    { role: 'system', content: COACH_SYSTEM_PROMPT },
+    { role: 'system', content: contextBlock },
+    ...recentHistory,
+    { role: 'user', content: userMessage },
+  ];
+
+  return await callLLM(messages, { maxTokens: 400, temperature: 0.7 });
+}

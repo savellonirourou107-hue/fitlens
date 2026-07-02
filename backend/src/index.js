@@ -14,6 +14,7 @@ import recognizeRouter from './routes/recognize.js';
 import authRouter from './routes/auth.js';
 import friendsRouter from './routes/friends.js';
 import syncRouter from './routes/sync.js';
+import coachRouter from './routes/coach.js';
 
 const app = express();
 
@@ -31,9 +32,10 @@ app.get('/health', (req, res) =>
 // GET /me 和 DELETE /me 在 router 内部自己 requireAuth
 app.use('/auth', authRouter);
 
-// 好友 + 同步全部需要登录
+// 好友 + 同步 + 教练全部需要登录
 app.use('/friends', requireAuth, friendsRouter);
 app.use('/sync', requireAuth, syncRouter);
+app.use('/coach', requireAuth, coachRouter);
 
 // 全局错误兜底
 app.use((err, req, res, next) => {

@@ -64,6 +64,7 @@ export default function RootLayout() {
           <Stack.Screen name="friend/requests" options={{ headerShown: false }} />
           <Stack.Screen name="friend/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="settings/account" options={{ headerShown: false }} />
+          <Stack.Screen name="coach/index" options={{ headerShown: false }} />
         </Stack>
 
         {/* 冷启动 banner：服务器启动中 */}
