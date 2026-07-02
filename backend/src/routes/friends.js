@@ -22,15 +22,19 @@ const TODAY_PUBLIC_FIELDS = [
 
 /** 检查 :id 是不是当前用户的好友（accepted 状态） */
 async function isAcceptedFriend(myId, otherId) {
+  const { low, high } = pairKey(myId, otherId);
   const rows = await sql`
     SELECT 1 FROM friendships
     WHERE status = 'accepted'
-      AND (
-        (user_low_id = LEAST(${myId}, ${otherId}) AND user_high_id = GREATEST(${myId}, ${otherId}))
-      )
+      AND user_low_id = ${low} AND user_high_id = ${high}
     LIMIT 1
   `;
   return rows.length > 0;
+}
+
+/** 规范化一对用户 ID 为 (low, high) - 避免 SQL 里 LEAST/GREATEST 嵌套参数化的兼容问题 */
+function pairKey(a, b) {
+  return a < b ? { low: a, high: b } : { low: b, high: a };
 }
 
 /** GET /friends - 我的好友列表 */
@@ -90,10 +94,10 @@ router.post('/request', async (req, res) => {
     return error(res, 404, 'NOT_FOUND', '用户不存在');
   }
   // 看现有关系
+  const { low, high } = pairKey(req.userId, target);
   const existing = await sql`
     SELECT id, status, requester_id, addressee_id FROM friendships
-    WHERE user_low_id = LEAST(${req.userId}, ${target})
-      AND user_high_id = GREATEST(${req.userId}, ${target})
+    WHERE user_low_id = ${low} AND user_high_id = ${high}
     LIMIT 1
   `;
   if (existing.length > 0) {
