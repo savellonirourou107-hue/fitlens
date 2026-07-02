@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,17 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera as CameraIcon, Image as ImageIcon, Utensils } from 'lucide-react-native';
+import {
+  Camera as CameraIcon,
+  ChevronDown,
+  ChevronUp,
+  CircleCheck,
+  Image as ImageIcon,
+  MessageCircle,
+  Plus,
+  TriangleAlert,
+  Utensils,
+} from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
@@ -55,63 +65,76 @@ export default function MealAddScreen() {
   const totalKcal = mealCalories(items);
   const macros = mealMacros(items);
 
-  /** 选图后自动识别 */
-  const pickAndRecognize = async (useCamera: boolean) => {
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    };
-    const result =
-      useCamera === true
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
-
-    if (result.canceled || !result.assets[0]?.uri) return;
-    const asset = result.assets[0];
-    setImageUri(asset.uri);
-    await runRecognize(asset.uri, asset);
-  };
-
-  const runRecognize = async (uri: string, asset?: ImagePicker.ImagePickerAsset) => {
-    setRecognizing(true);
-    setRecognizePhase('uploading');
-    setRecognizeStatus('idle');
-    setRecognizeMsg('');
-    setAiComment('');
-    try {
-      // 上传/压缩阶段短暂显示；后端返回开始分析时切到 analyzing
-      const data = await recognizeMealImage(uri, asset);
-      setRecognizePhase('analyzing');
-      const aiItems: FoodItem[] = data.items.map((it) => ({
-        id: genId('food_'),
-        name: it.name,
-        portionGrams: it.portionGrams,
-        caloriesKcal: it.caloriesKcal,
-        proteinG: it.proteinG,
-        carbsG: it.carbsG,
-        fatG: it.fatG,
-        source: 'ai',
-      }));
-      setItems((prev) => [...prev, ...aiItems]);
-      setAiComment((data.comment ?? '').trim());
-      if (aiItems.length === 0) {
+  /** 上传图片并调用 AI 识别 */
+  const runRecognize = useCallback(
+    async (uri: string, asset?: ImagePicker.ImagePickerAsset) => {
+      setRecognizing(true);
+      setRecognizePhase('uploading');
+      setRecognizeStatus('idle');
+      setRecognizeMsg('');
+      setAiComment('');
+      try {
+        // 上传/压缩阶段短暂显示；后端返回开始分析时切到 analyzing
+        const data = await recognizeMealImage(uri, asset);
+        setRecognizePhase('analyzing');
+        const aiItems: FoodItem[] = data.items.map((it) => ({
+          id: genId('food_'),
+          name: it.name,
+          portionGrams: it.portionGrams,
+          caloriesKcal: it.caloriesKcal,
+          proteinG: it.proteinG,
+          carbsG: it.carbsG,
+          fatG: it.fatG,
+          source: 'ai',
+        }));
+        setItems((prev) => [...prev, ...aiItems]);
+        setAiComment((data.comment ?? '').trim());
+        if (aiItems.length === 0) {
+          setRecognizeStatus('fail');
+          setRecognizeMsg('未识别到清晰的食物。请换一张光线更好的照片，或手动添加。');
+        } else {
+          const total = aiItems.reduce((s, i) => s + i.caloriesKcal, 0);
+          setRecognizeStatus('ok');
+          setRecognizeMsg(`AI 估算值，请根据实际份量修正后保存（识别出 ${aiItems.length} 项，合计约 ${Math.round(total)} kcal）。`);
+        }
+      } catch (e) {
         setRecognizeStatus('fail');
-        setRecognizeMsg('未识别到清晰的食物。请换一张光线更好的照片，或手动添加。');
-      } else {
-        const total = aiItems.reduce((s, i) => s + i.caloriesKcal, 0);
-        setRecognizeStatus('ok');
-        setRecognizeMsg(`AI 估算值，请根据实际份量修正后保存（识别出 ${aiItems.length} 项，合计约 ${Math.round(total)} kcal）。`);
+        setRecognizeMsg(e instanceof Error ? e.message : '请检查网络或重试');
+      } finally {
+        setRecognizing(false);
+        setRecognizePhase('idle');
       }
-    } catch (e) {
-      setRecognizeStatus('fail');
-      setRecognizeMsg(e instanceof Error ? e.message : '请检查网络或重试');
-    } finally {
-      setRecognizing(false);
-      setRecognizePhase('idle');
-    }
-  };
+    },
+    [],
+  );
+
+  /** 选图后自动识别 */
+  const pickAndRecognize = useCallback(
+    async (useCamera: boolean) => {
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      };
+      const result =
+        useCamera === true
+          ? await ImagePicker.launchCameraAsync(options)
+          : await ImagePicker.launchImageLibraryAsync(options);
+
+      if (result.canceled || !result.assets[0]?.uri) return;
+      const asset = result.assets[0];
+      setImageUri(asset.uri);
+      await runRecognize(asset.uri, asset);
+    },
+    [runRecognize],
+  );
+
+  const handlePickFromCamera = useCallback(() => pickAndRecognize(true), [pickAndRecognize]);
+  const handlePickFromAlbum = useCallback(() => pickAndRecognize(false), [pickAndRecognize]);
+  const handleReRecognize = useCallback(() => {
+    if (imageUri) runRecognize(imageUri);
+  }, [imageUri, runRecognize]);
 
   const addManualItem = () => {
     const name = mName.trim();
@@ -192,7 +215,7 @@ export default function MealAddScreen() {
               )}
               <Pressable
                 style={styles.reRecognizeBtn}
-                onPress={() => imageUri && runRecognize(imageUri)}
+                onPress={handleReRecognize}
                 disabled={recognizing}
               >
                 <Text style={styles.reRecognizeText}>重新识别</Text>
@@ -204,11 +227,11 @@ export default function MealAddScreen() {
               <Text style={styles.cameraTitle}>拍照识别餐食</Text>
               <Text style={styles.cameraHint}>拍一张餐食照片，AI 自动识别食物和热量</Text>
               <View style={styles.cameraBtnRow}>
-                <Pressable style={[styles.cameraBtn, styles.cameraBtnPrimary]} onPress={() => pickAndRecognize(true)}>
+                <Pressable style={[styles.cameraBtn, styles.cameraBtnPrimary]} onPress={handlePickFromCamera}>
                   <CameraIcon size={18} color="#fff" style={styles.cameraBtnIcon} />
                   <Text style={styles.cameraBtnText}>拍照</Text>
                 </Pressable>
-                <Pressable style={[styles.cameraBtn, styles.cameraBtnSecondary]} onPress={() => pickAndRecognize(false)}>
+                <Pressable style={[styles.cameraBtn, styles.cameraBtnSecondary]} onPress={handlePickFromAlbum}>
                   <ImageIcon size={18} color="#fff" style={styles.cameraBtnIcon} />
                   <Text style={styles.cameraBtnText}>相册</Text>
                 </Pressable>
@@ -221,7 +244,11 @@ export default function MealAddScreen() {
         {/* AI 识别结果反馈 */}
         {recognizeStatus !== 'idle' && (
           <View style={[styles.resultBanner, recognizeStatus === 'ok' ? styles.resultOk : styles.resultFail]}>
-            <Text style={styles.resultIcon}>{recognizeStatus === 'ok' ? '✅' : '⚠️'}</Text>
+            {recognizeStatus === 'ok' ? (
+              <CircleCheck size={18} color={theme.colors.success} style={styles.resultIcon} />
+            ) : (
+              <TriangleAlert size={18} color={theme.colors.danger} style={styles.resultIcon} />
+            )}
             <Text style={styles.resultMsg}>{recognizeMsg}</Text>
           </View>
         )}
@@ -241,7 +268,9 @@ export default function MealAddScreen() {
         {/* AI 营养顾问点评卡片 */}
         {items.length > 0 && aiComment && (
           <View style={styles.aiCommentCard}>
-            <Text style={styles.aiCommentEmoji}>🍱</Text>
+            <View style={styles.aiCommentIcon}>
+              <MessageCircle size={20} color={theme.colors.primaryDark} />
+            </View>
             <Text style={styles.aiCommentText} numberOfLines={2}>
               {aiComment}
             </Text>
@@ -288,9 +317,13 @@ export default function MealAddScreen() {
 
         {/* 手动添加 */}
         <Pressable style={styles.manualToggle} onPress={() => setShowManual((v) => !v)}>
-          <Text style={styles.manualToggleText}>
-            {showManual ? '收起手动添加 ▲' : '＋ 手动添加食物 ▼'}
-          </Text>
+          <Plus size={16} color={theme.colors.primaryDark} style={styles.manualToggleIcon} />
+          <Text style={styles.manualToggleText}>{showManual ? '收起手动添加' : '手动添加食物'}</Text>
+          {showManual ? (
+            <ChevronUp size={16} color={theme.colors.primaryDark} />
+          ) : (
+            <ChevronDown size={16} color={theme.colors.primaryDark} />
+          )}
         </Pressable>
 
         {showManual && (
@@ -321,7 +354,13 @@ export default function MealAddScreen() {
         />
 
         {/* 保存 */}
-        <Pressable style={[styles.saveBtn, items.length === 0 && styles.saveBtnDisabled]} onPress={handleSave} disabled={items.length === 0}>
+        <Pressable
+          style={[styles.saveBtn, items.length === 0 && styles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={items.length === 0}
+          accessibilityLabel="保存餐食"
+          accessibilityHint={items.length === 0 ? '请先拍照识别或手动添加食物后再保存' : '保存当前餐食记录'}
+        >
           <Text style={styles.saveBtnText}>保存餐食</Text>
         </Pressable>
       </ScrollView>
@@ -524,21 +563,27 @@ const styles = StyleSheet.create({
   },
   resultOk: { backgroundColor: theme.colors.success + '15' },
   resultFail: { backgroundColor: theme.colors.danger + '15' },
-  resultIcon: { fontSize: 16, marginTop: 2 },
+  resultIcon: { marginTop: 1 },
   resultMsg: { flex: 1, fontSize: theme.fontSizes.sm, color: theme.colors.text, lineHeight: 20 },
-  // AI 营养顾问点评：圆角 + 毛玻璃（半透明 surfaceMuted）+ 阴影
   aiCommentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: theme.spacing.md,
     borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surfaceMuted + 'CC', // 80% 不透，模拟毛玻璃
+    backgroundColor: theme.colors.primarySoft,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.primary + '33',
     marginBottom: theme.spacing.md,
-    ...theme.shadow.card,
   },
-  aiCommentEmoji: { fontSize: 32, marginRight: theme.spacing.md },
+  aiCommentIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing.md,
+  },
   aiCommentText: {
     flex: 1,
     fontSize: theme.fontSizes.sm,
@@ -546,10 +591,16 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   manualToggle: {
-    paddingVertical: theme.spacing.md, alignItems: 'center',
+    minHeight: 48,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     backgroundColor: theme.colors.surface, borderRadius: theme.radius.md,
     borderWidth: 1, borderColor: theme.colors.border, marginBottom: theme.spacing.md,
   },
+  manualToggleIcon: { marginRight: theme.spacing.xs },
   manualToggleText: { color: theme.colors.primaryDark, fontSize: theme.fontSizes.md, fontWeight: '500' },
   input: {
     borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.sm,

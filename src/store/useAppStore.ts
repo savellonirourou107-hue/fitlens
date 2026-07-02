@@ -24,6 +24,8 @@ export interface AppState {
   exercises: ExerciseEntry[];
   diaries: DiaryEntry[];
   hydrated: boolean;
+  /** hydrate 失败时的错误信息；UI 可据此展示重试提示 */
+  hydrateError: string | null;
 
   setProfile: (p: UserProfile) => void;
   addMeal: (meal: Meal) => void;
@@ -35,6 +37,7 @@ export interface AppState {
   removeDiary: (id: string) => void;
   getDiaryByDate: (date: string) => DiaryEntry | undefined;
   setHydrated: (b: boolean) => void;
+  clearHydrateError: () => void;
   hydrateFromDb: () => Promise<void>;
   getMealsByDate: (date: string) => Meal[];
   getExercisesByDate: (date: string) => ExerciseEntry[];
@@ -48,50 +51,71 @@ export const useAppStore = create<AppState>((set, get) => ({
   exercises: [],
   diaries: [],
   hydrated: false,
+  hydrateError: null,
 
   setProfile: (p) => {
-    set({ profile: p });
-    void repo.saveProfile(p).catch((e) => console.error('saveProfile failed', e));
+    // 先持久化，成功后再更新内存态；失败时保持旧状态不变（避免内存与 DB 不一致）
+    void repo
+      .saveProfile(p)
+      .then(() => set({ profile: p }))
+      .catch((e) => console.error('saveProfile failed', e));
   },
   addMeal: (meal) => {
-    set((state) => ({ meals: [...state.meals, meal] }));
-    void repo.saveMeal(meal).catch((e) => console.error('saveMeal failed', e));
+    void repo
+      .saveMeal(meal)
+      .then(() => set((state) => ({ meals: [...state.meals, meal] })))
+      .catch((e) => console.error('saveMeal failed', e));
   },
-  updateMeal: (id, patch) =>
-    set((state) => ({
-      meals: state.meals.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-    })),
+  updateMeal: (id, patch) => {
+    const prev = get().meals;
+    const next = prev.map((m) => (m.id === id ? { ...m, ...patch } : m));
+    // 仅乐观更新内存态；DB 持久化不在本 action 范围内（如需更新 DB 调用方应单独保存）
+    set({ meals: next });
+  },
   removeMeal: (id) => {
-    set((state) => ({ meals: state.meals.filter((m) => m.id !== id) }));
-    void repo.deleteMealDb(id).catch((e) => console.error('deleteMeal failed', e));
+    void repo
+      .deleteMealDb(id)
+      .then(() => set((state) => ({ meals: state.meals.filter((m) => m.id !== id) })))
+      .catch((e) => console.error('deleteMeal failed', e));
   },
   addExercise: (e) => {
-    set((state) => ({ exercises: [...state.exercises, e] }));
-    void repo.saveExercise(e).catch((err) => console.error('saveExercise failed', err));
+    void repo
+      .saveExercise(e)
+      .then(() => set((state) => ({ exercises: [...state.exercises, e] })))
+      .catch((err) => console.error('saveExercise failed', err));
   },
   removeExercise: (id) => {
-    set((state) => ({
-      exercises: state.exercises.filter((x) => x.id !== id),
-    }));
-    void repo.deleteExerciseDb(id).catch((e) => console.error('deleteExercise failed', e));
+    void repo
+      .deleteExerciseDb(id)
+      .then(() =>
+        set((state) => ({ exercises: state.exercises.filter((x) => x.id !== id) })),
+      )
+      .catch((e) => console.error('deleteExercise failed', e));
   },
   upsertDiary: (diary) => {
-    set((state) => {
-      const exists = state.diaries.some((d) => d.date === diary.date);
-      return {
-        diaries: exists
-          ? state.diaries.map((d) => (d.date === diary.date ? diary : d))
-          : [...state.diaries, diary],
-      };
-    });
-    void repo.upsertDiaryDb(diary).catch((e) => console.error('upsertDiary failed', e));
+    void repo
+      .upsertDiaryDb(diary)
+      .then(() =>
+        set((state) => {
+          const exists = state.diaries.some((d) => d.date === diary.date);
+          return {
+            diaries: exists
+              ? state.diaries.map((d) => (d.date === diary.date ? diary : d))
+              : [...state.diaries, diary],
+          };
+        }),
+      )
+      .catch((e) => console.error('upsertDiary failed', e));
   },
   removeDiary: (id) => {
-    set((state) => ({ diaries: state.diaries.filter((d) => d.id !== id) }));
-    void repo.deleteDiaryDb(id).catch((e) => console.error('deleteDiary failed', e));
+    void repo
+      .deleteDiaryDb(id)
+      .then(() => set((state) => ({ diaries: state.diaries.filter((d) => d.id !== id) })))
+      .catch((e) => console.error('deleteDiary failed', e));
   },
   getDiaryByDate: (date) => get().diaries.find((d) => d.date === date),
   setHydrated: (b) => set({ hydrated: b }),
+  clearHydrateError: () => set({ hydrateError: null }),
   hydrateFromDb: async () => {
     try {
       const [profile, meals, exercises, diaries] = await Promise.all([
@@ -100,10 +124,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         repo.loadAllExercises(),
         repo.loadAllDiaries(),
       ]);
-      set({ profile, meals, exercises, diaries, hydrated: true });
+      set({ profile, meals, exercises, diaries, hydrated: true, hydrateError: null });
     } catch (e) {
       console.error('hydrateFromDb failed', e);
-      set({ hydrated: true });
+      // 保持 hydrated: false，UI 可据此显示重试提示；记录错误信息
+      set({
+        hydrated: false,
+        hydrateError: e instanceof Error ? e.message : String(e),
+      });
     }
   },
 

@@ -39,6 +39,7 @@ export default function RingProgress({
   const center = size / 2;
   const useGradient = !color;
   const gradientId = 'ringProgressGradient';
+  const valueFontSize = Math.max(theme.fontSizes.lg, Math.round(size * 0.24));
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
@@ -69,14 +70,13 @@ export default function RingProgress({
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           fill="none"
-          strokeDasharray={circumference}
+          strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={offset}
-          rotation="-90"
-          origin={`${center},${center}`}
+          transform={`rotate(-90 ${center} ${center})`}
         />
       </Svg>
       <View style={styles.centerContent} pointerEvents="none">
-        <Text style={styles.valueLabel}>{valueLabel}</Text>
+        <Text style={[styles.valueLabel, { fontSize: valueFontSize }]}>{valueLabel}</Text>
         {centerLabel ? (
           <Text style={styles.centerLabel}>{centerLabel}</Text>
         ) : null}

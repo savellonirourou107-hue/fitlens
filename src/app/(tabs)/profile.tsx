@@ -8,8 +8,11 @@ import {
   StyleSheet,
   Alert,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Mars, Venus, type LucideIcon } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
@@ -18,9 +21,9 @@ import { ACTIVITY_LEVELS, GOALS } from '../../types';
 import { bmrHarrisBenedict, tdee, dailyTargetKcal, macroTargets } from '../../core/calc';
 import { format } from 'date-fns';
 
-const SEX_OPTIONS: { value: Sex; label: string; icon: string }[] = [
-  { value: 'male', label: '男', icon: '♂' },
-  { value: 'female', label: '女', icon: '♀' },
+const SEX_OPTIONS: { value: Sex; label: string; icon: LucideIcon }[] = [
+  { value: 'male', label: '男', icon: Mars },
+  { value: 'female', label: '女', icon: Venus },
 ];
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
@@ -107,11 +110,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         {/* 顶部标题 */}
         <View style={styles.header}>
           <Text style={styles.title}>个人资料</Text>
@@ -128,9 +135,11 @@ export default function ProfileScreen() {
                 style={[styles.sexBtn, sex === opt.value && styles.sexBtnActive]}
                 onPress={() => setSex(opt.value)}
               >
-                <Text style={[styles.sexIcon, sex === opt.value && styles.sexIconActive]}>
-                  {opt.icon}
-                </Text>
+                <opt.icon
+                  size={28}
+                  color={sex === opt.value ? theme.colors.primary : theme.colors.textMuted}
+                  style={styles.sexIcon}
+                />
                 <Text style={[styles.sexLabel, sex === opt.value && styles.sexLabelActive]}>
                   {opt.label}
                 </Text>
@@ -327,7 +336,8 @@ export default function ProfileScreen() {
         <Pressable style={styles.saveBtn} onPress={handleSave}>
           <Text style={styles.saveBtnText}>保存</Text>
         </Pressable>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -336,7 +346,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scrollContent: {
     padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
+    paddingBottom: 96,
     maxWidth: 600,
     width: '100%',
     alignSelf: 'center',
@@ -374,7 +384,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sexBtnActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '15' },
-  sexIcon: { fontSize: 32, marginBottom: 4 },
+  sexIcon: { marginBottom: 4 },
   sexIconActive: { opacity: 1 },
   sexLabel: { fontSize: theme.fontSizes.md, color: theme.colors.textMuted, fontWeight: '500' },
   sexLabelActive: { color: theme.colors.primary, fontWeight: theme.fontWeights.bold },
@@ -397,13 +407,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   readOnlyText: { fontSize: theme.fontSizes.lg, color: theme.colors.textMuted, fontWeight: '500' },
-  numberInputRow: { flexDirection: 'row', alignItems: 'center' },
+  numberInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    minWidth: 0,
+    position: 'relative',
+  },
   numberInput: {
     flex: 1,
+    width: '100%',
+    minWidth: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.sm,
     padding: theme.spacing.md,
+    paddingRight: 64,
     backgroundColor: theme.colors.surface,
     color: theme.colors.text,
     fontSize: theme.fontSizes.xxl,

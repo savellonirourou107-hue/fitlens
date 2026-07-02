@@ -1,5 +1,5 @@
 import { Stack, router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -63,7 +63,7 @@ export default function ExerciseScreenshotScreen() {
   };
 
   /** 调后端 AI 识别运动截图字段 */
-  const handleRecognize = async () => {
+  const handleRecognize = useCallback(async () => {
     if (!imageUri) {
       setRecognizeError('请先选择运动软件截图');
       return;
@@ -94,7 +94,7 @@ export default function ExerciseScreenshotScreen() {
       setRecognizing(false);
       setRecognizePhase('idle');
     }
-  };
+  }, [imageUri, pendingAsset]);
 
   const handleSave = () => {
     if (!recognized) {
@@ -173,7 +173,7 @@ export default function ExerciseScreenshotScreen() {
         {/* 识别失败红色横幅（避免用 Alert.web 不稳） */}
         {recognizeError && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorIcon} accessibilityLabel="识别错误" accessibilityRole="text">⚠️</Text>
             <Text style={styles.errorMsg}>{recognizeError}</Text>
           </View>
         )}

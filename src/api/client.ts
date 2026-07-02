@@ -9,7 +9,7 @@
  * 这样避开了 RN FormData 在 Android 上不支持 {uri,name,type} 对象格式的坑
  * (报错: "Unsupported FormData implementation")
  *
- * 60 秒超时：使用 AbortController 显式设置，超过后 throw
+ * 30 秒超时：使用 AbortController 显式设置，超过后 throw
  *
  * MIME 推断：优先用 ImagePickerAsset.mimeType / fileName 后缀，避免错把 jpg 当 jpeg 上传失败
  */
@@ -24,7 +24,7 @@ const DEFAULT_BASE_URL =
 export const BACKEND_URL = DEFAULT_BASE_URL;
 
 /** 识别请求总超时（毫秒） */
-export const RECOGNIZE_TIMEOUT_MS = 60_000;
+export const RECOGNIZE_TIMEOUT_MS = 30_000;
 
 /** AI 识别隐私提示文案（UI 复用，避免硬编码两份） */
 export const AI_PRIVACY_NOTICE =
@@ -145,7 +145,7 @@ export async function recognizeExerciseImage(
 }
 
 /**
- * fetch 包装：60 秒超时（AbortController）。超时 throw '识别超时（60秒），请检查网络或重试'
+ * fetch 包装：30 秒超时（AbortController）。超时 throw '识别超时（30秒），请检查网络或重试'
  */
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -157,7 +157,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
       e instanceof Error &&
       (e.name === 'AbortError' || e.message?.toLowerCase().includes('abort'))
     ) {
-      throw new Error('识别超时（60秒），请检查网络或重试');
+      throw new Error('识别超时（30秒），请检查网络或重试');
     }
     throw e;
   } finally {

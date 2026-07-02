@@ -1,5 +1,5 @@
-import { Link, router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,38 +8,49 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, Activity, BookText } from 'lucide-react-native';
+import {
+  Activity,
+  BookText,
+  Camera,
+  ChevronRight,
+  Flame,
+  TrendingUp,
+  Utensils,
+} from 'lucide-react-native';
+import { format, parseISO } from 'date-fns';
 import { theme } from '../../theme';
-import { Card, StatCard } from '../../components/Card';
 import RingProgress from '../../components/RingProgress';
-import MacroDonut from '../../components/MacroDonut';
 import { useAppStore } from '../../store/useAppStore';
 import { MEAL_TYPE_LABELS } from '../../types';
 import type { MealType } from '../../types';
-import { format, parseISO } from 'date-fns';
+import {
+  buildBudgetInsight,
+  buildMacroPercentages,
+  mealTypeCaption,
+  type BudgetTone,
+} from '../../core/insights';
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+const toneStyles: Record<BudgetTone, { bg: string; fg: string; text: string }> = {
+  steady: { bg: theme.colors.primarySoft, fg: theme.colors.primaryDark, text: '稳定' },
+  tight: { bg: theme.colors.accentSoft, fg: theme.colors.accent, text: '偏紧' },
+  over: { bg: theme.colors.dangerSoft, fg: theme.colors.danger, text: '超出' },
+  empty: { bg: theme.colors.secondarySoft, fg: theme.colors.secondary, text: '待完善' },
+};
 
 export default function DashboardScreen() {
   const meals = useAppStore((s) => s.meals);
   const exercises = useAppStore((s) => s.exercises);
-  const profile = useAppStore((s) => s.profile);
   const diary = useAppStore((s) => s.getDiaryByDate(format(new Date(), 'yyyy-MM-dd')));
   const getDailySummary = useAppStore((s) => s.getDailySummary);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const summary = getDailySummary(today);
+  const insight = buildBudgetInsight(summary);
+  const macroPercentages = buildMacroPercentages(summary);
+  const tone = toneStyles[insight.tone];
 
-  // 用户视角 "还能吃" = 目标 - 已摄入 + 已消耗 = 目标 - 净摄入
-  const remaining = summary.targetKcal - summary.intakeKcal + summary.burnedKcal;
-
-  // 进度环：进度 = 已吃 / (目标 + 运动补偿) ，clamp 0~1
-  const effectiveTarget =
-    summary.targetKcal > 0 ? summary.targetKcal + summary.burnedKcal : 0;
-  const remainingRatio =
-    effectiveTarget > 0 ? Math.min(1, summary.intakeKcal / effectiveTarget) : 0;
-
-  // 按餐次分组的今日餐食
   const mealsByType = useMemo(() => {
     const map: Record<MealType, typeof meals> = {
       breakfast: [],
@@ -47,221 +58,305 @@ export default function DashboardScreen() {
       dinner: [],
       snack: [],
     };
-    for (const m of meals) {
-      if (m.date === today && map[m.mealType]) {
-        map[m.mealType].push(m);
-      }
+    for (const meal of meals) {
+      if (meal.date === today) map[meal.mealType].push(meal);
     }
     return map;
   }, [meals, today]);
 
-  // 今日运动列表
-  const todayExercises = exercises.filter((x) => x.date === today);
+  const todayExercises = useMemo(
+    () => exercises.filter((exercise) => exercise.date === today),
+    [exercises, today],
+  );
 
-  // 折叠/展开次要信息
-  const [showDetails, setShowDetails] = useState(false);
+  const nextMealType = MEAL_ORDER.find((mealType) => mealsByType[mealType].length === 0);
+
+  // 稳定的导航回调，避免每次渲染创建新的 onPress 引用导致子组件无谓重渲染
+  const goToTrend = useCallback(() => router.push('/trend'), []);
+  const goToAddMeal = useCallback(() => router.push('/meal/add'), []);
+  const goToAddExercise = useCallback(() => router.push('/exercise/add'), []);
+  const goToDiary = useCallback(() => router.push('/(tabs)/diary'), []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* 标题栏 */}
         <View style={styles.header}>
           <View>
             <Text style={styles.appName}>FitLens</Text>
-            <Text style={styles.dateText}>{format(parseISO(today), 'M月d日 EEEE')}</Text>
+            <Text style={styles.dateText}>{format(parseISO(today), 'M月d日')} · 今日记录</Text>
           </View>
+          <Pressable style={styles.headerAction} onPress={goToTrend}>
+            <TrendingUp size={16} color={theme.colors.primaryDark} />
+            <Text style={styles.headerActionText}>趋势</Text>
+          </Pressable>
         </View>
 
-        {/* === 第 1 屏：优先级最高的 3 块 === */}
-
-        {/* A. 顶部大卡片：今日还能吃 */}
-        <View style={styles.remainingCard}>
-          <View style={styles.remainingTopRow}>
-            <View style={styles.remainingTextCol}>
-              <Text style={styles.remainingTitle}>今日还能吃</Text>
-              <View style={styles.remainingValueRow}>
-                <Text style={styles.remainingValue}>{remaining}</Text>
-                <Text style={styles.remainingUnit}>千卡</Text>
-              </View>
-              <Text style={styles.remainingHint}>目标缺口</Text>
-              <Text style={styles.remainingSubText}>
-                目标 {summary.targetKcal} kcal · 当前缺口 {summary.deficitKcal} kcal
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <View style={[styles.toneBadge, { backgroundColor: tone.bg }]}>
+              <Text style={[styles.toneBadgeText, { color: tone.fg }]}>{tone.text}</Text>
+            </View>
+            <Text style={styles.heroLabel}>今日还能吃</Text>
+            <View style={styles.heroValueRow}>
+              <Text style={[styles.heroValue, insight.tone === 'over' && styles.heroValueDanger]}>
+                {insight.tone === 'over' ? Math.abs(insight.remainingKcal) : insight.remainingKcal}
               </Text>
+              <Text style={styles.heroUnit}>{insight.tone === 'over' ? 'kcal 超出' : 'kcal'}</Text>
             </View>
-            <View style={styles.remainingRingCol}>
-              <RingProgress
-                progress={remainingRatio}
-                valueLabel={`${Math.max(0, Math.round(remaining))}`}
-                centerLabel={`/ ${summary.targetKcal}kcal`}
-                size={110}
-                strokeWidth={10}
-              />
-            </View>
+            <Text style={styles.heroTitle}>{insight.title}</Text>
+            <Text style={styles.heroSubtitle}>{insight.subtitle}</Text>
           </View>
-        </View>
-
-        {/* B. 主按钮：拍照记餐 + 记录运动 */}
-        <View style={styles.actionRow}>
-          <Pressable
-            style={[styles.actionBtn, styles.actionBtnPrimary]}
-            onPress={() => router.push('/meal/add')}
-          >
-            <Camera size={22} color={theme.colors.textInverse} style={styles.actionBtnIcon} />
-            <Text style={styles.actionBtnText}>拍照记餐</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionBtn, styles.actionBtnSecondary]}
-            onPress={() => router.push('/exercise/add')}
-          >
-            <Activity size={22} color={theme.colors.textInverse} style={styles.actionBtnIcon} />
-            <Text style={[styles.actionBtnText, styles.actionBtnSecondaryText]}>记录运动</Text>
-          </Pressable>
-        </View>
-
-        {/* C. 紧凑三列统计 */}
-        <View style={styles.compactRow}>
-          <StatCard
-            label="摄入"
-            value={`${summary.intakeKcal}`}
-            unit="kcal"
-            accent={theme.colors.secondary}
-          />
-          <StatCard
-            label="消耗"
-            value={`${summary.burnedKcal}`}
-            unit="kcal"
-            accent={theme.colors.accent}
-          />
-          <StatCard
-            label="净摄入"
-            value={`${summary.netKcal}`}
-            unit="kcal"
-            accent={theme.colors.primary}
+          <RingProgress
+            progress={insight.progress}
+            valueLabel={`${Math.round(summary.intakeKcal)}`}
+            centerLabel={`/ ${summary.targetKcal || '--'}`}
+            size={112}
+            strokeWidth={10}
+            gradientFrom={tone.fg}
+            gradientTo={theme.colors.secondary}
           />
         </View>
 
-        {/* 折叠开关：第 2 屏区域 */}
-        <Pressable
-          style={styles.expandBtn}
-          onPress={() => setShowDetails((v) => !v)}
-        >
-          <Text style={styles.expandBtnText}>
-            {showDetails ? '收起详情 ▴' : '查看今日详情 ▾'}
-          </Text>
+        <View style={styles.actionGrid}>
+          <QuickAction
+            icon={<Camera size={22} color={theme.colors.textInverse} />}
+            title={nextMealType ? `记录${MEAL_TYPE_LABELS[nextMealType]}` : '拍照记餐'}
+            subtitle="拍照或相册识别"
+            color={theme.colors.primary}
+            onPress={goToAddMeal}
+          />
+          <QuickAction
+            icon={<Activity size={22} color={theme.colors.textInverse} />}
+            title="记录运动"
+            subtitle="时长或截图导入"
+            color={theme.colors.secondary}
+            onPress={goToAddExercise}
+          />
+        </View>
+
+        <View style={styles.metricStrip}>
+          <Metric label="摄入" value={summary.intakeKcal} unit="kcal" color={theme.colors.secondary} />
+          <Metric label="消耗" value={summary.burnedKcal} unit="kcal" color={theme.colors.accent} />
+          <Metric label="净摄入" value={summary.netKcal} unit="kcal" color={theme.colors.primaryDark} />
+        </View>
+
+        <SectionHeader title="今日时间线" action="补记录" onPress={goToAddMeal} />
+        <View style={styles.timelineSurface}>
+          {MEAL_ORDER.map((mealType, index) => {
+            const list = mealsByType[mealType];
+            const kcal = list.reduce(
+              (sum, meal) => sum + meal.items.reduce((inner, item) => inner + item.caloriesKcal, 0),
+              0,
+            );
+            const names = list
+              .flatMap((meal) => meal.items.map((item) => item.name))
+              .slice(0, 3)
+              .join(' · ');
+            return (
+              <TimelineRow
+                key={mealType}
+                icon={<Utensils size={18} color={theme.colors.primaryDark} />}
+                label={MEAL_TYPE_LABELS[mealType]}
+                caption={mealTypeCaption(mealType)}
+                detail={list.length > 0 ? names : '还没有记录'}
+                value={list.length > 0 ? `${Math.round(kcal)} kcal` : '添加'}
+                color={list.length > 0 ? theme.colors.primaryDark : theme.colors.textMuted}
+                showDivider={index < MEAL_ORDER.length - 1 || todayExercises.length > 0}
+                onPress={goToAddMeal}
+              />
+            );
+          })}
+          {todayExercises.length > 0 ? (
+            todayExercises.map((exercise, index) => (
+              <TimelineRow
+                key={exercise.id}
+                icon={<Flame size={18} color={theme.colors.accent} />}
+                label="运动"
+                caption={`${exercise.durationMin} 分钟`}
+                detail={`${exercise.type} · ${exercise.intensity}`}
+                value={`-${exercise.caloriesBurnedKcal} kcal`}
+                color={theme.colors.accent}
+                showDivider={index < todayExercises.length - 1}
+                onPress={goToAddExercise}
+              />
+            ))
+          ) : (
+            <TimelineRow
+              icon={<Flame size={18} color={theme.colors.accent} />}
+              label="运动"
+              caption="消耗补偿"
+              detail="还没有运动记录"
+              value="添加"
+              color={theme.colors.textMuted}
+              showDivider={false}
+              onPress={goToAddExercise}
+            />
+          )}
+        </View>
+
+        <SectionHeader title="营养比例" action="7 日趋势" onPress={goToTrend} />
+        <View style={styles.macroSurface}>
+          <MacroBar
+            label="蛋白"
+            grams={summary.proteinG}
+            percent={macroPercentages.protein}
+            color={theme.colors.primary}
+          />
+          <MacroBar
+            label="碳水"
+            grams={summary.carbsG}
+            percent={macroPercentages.carbs}
+            color={theme.colors.secondary}
+          />
+          <MacroBar
+            label="脂肪"
+            grams={summary.fatG}
+            percent={macroPercentages.fat}
+            color={theme.colors.accent}
+          />
+        </View>
+
+        <Pressable style={styles.diaryCallout} onPress={goToDiary}>
+          <View style={styles.diaryIconBox}>
+            <BookText size={20} color={theme.colors.primaryDark} />
+          </View>
+          <View style={styles.diaryText}>
+            <Text style={styles.diaryTitle}>今日日记</Text>
+            <Text style={styles.diaryPreview} numberOfLines={1}>
+              {diary ? diary.content : '记录饮食、训练和状态变化'}
+            </Text>
+          </View>
+          <ChevronRight size={20} color={theme.colors.textMuted} />
         </Pressable>
-
-        {showDetails ? (
-          <>
-            {/* D. 今日餐食按餐次展开列表 */}
-            <Card style={styles.summaryCard}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>今日餐食</Text>
-                <Pressable onPress={() => router.push('/meal/add')}>
-                  <Text style={styles.linkText}>+ 添加</Text>
-                </Pressable>
-              </View>
-              {MEAL_ORDER.map((mt) => {
-                const list = mealsByType[mt];
-                return (
-                  <View key={mt} style={styles.mealTypeBlock}>
-                    <View style={styles.mealTypeHeader}>
-                      <Text style={styles.mealTypeLabel}>{MEAL_TYPE_LABELS[mt]}</Text>
-                      {list.length === 0 ? (
-                        <Pressable onPress={() => router.push('/meal/add')}>
-                          <Text style={styles.linkText}>+ 添加</Text>
-                        </Pressable>
-                      ) : (
-                        <Text style={styles.mealTypeKcal}>
-                          {list.reduce(
-                            (sum, m) =>
-                              sum + m.items.reduce((s, i) => s + i.caloriesKcal, 0),
-                            0,
-                          )}{' '}
-                          kcal
-                        </Text>
-                      )}
-                    </View>
-                    {list.length === 0 ? (
-                      <Text style={styles.mealEmptyText}>还没添加？拍照记餐 →</Text>
-                    ) : (
-                      list.map((meal) => (
-                        <View key={meal.id} style={styles.mealItemRow}>
-                          <Text style={styles.mealItemNames} numberOfLines={1}>
-                            {meal.items.map((i) => i.name).join(' · ')}
-                          </Text>
-                          <Text style={styles.mealItemKcal}>
-                            {meal.items.reduce((s, i) => s + i.caloriesKcal, 0)} kcal
-                          </Text>
-                        </View>
-                      ))
-                    )}
-                  </View>
-                );
-              })}
-            </Card>
-
-            {/* E. 今日运动列表 */}
-            <Card style={styles.summaryCard}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>今日运动</Text>
-                <Pressable onPress={() => router.push('/exercise/add')}>
-                  <Text style={styles.linkText}>+ 添加</Text>
-                </Pressable>
-              </View>
-              {todayExercises.length === 0 ? (
-                <Text style={styles.emptyText}>还没运动？记录一项试试 →</Text>
-              ) : (
-                todayExercises.map((x) => (
-                  <View key={x.id} style={styles.exerciseRow}>
-                    <Text style={styles.exerciseType}>{x.type}</Text>
-                    <Text style={styles.exerciseMeta}>
-                      {x.durationMin}min · -{x.caloriesBurnedKcal}kcal
-                    </Text>
-                  </View>
-                ))
-              )}
-            </Card>
-
-            {/* F. 营养素占比甜甜圈 */}
-            <Card style={styles.summaryCard}>
-              <Text style={styles.sectionTitle}>营养素占比</Text>
-              <View style={styles.donutRow}>
-                <MacroDonut
-                  proteinG={summary.proteinG}
-                  carbsG={summary.carbsG}
-                  fatG={summary.fatG}
-                  size={150}
-                  strokeWidth={16}
-                />
-              </View>
-            </Card>
-
-            {/* G. 趋势入口 */}
-            <Link href="/trend" asChild>
-              <Pressable style={styles.trendLink}>
-                <Text style={styles.trendLinkText}>查看 7 日趋势 →</Text>
-              </Pressable>
-            </Link>
-
-            {/* H. 今日日记入口 */}
-            <Link href="/(tabs)/diary" asChild>
-              <Pressable style={styles.diaryLink}>
-                <View style={styles.diaryLinkLeft}>
-                  <BookText size={24} color={theme.colors.primaryDark} style={styles.diaryIcon} />
-                  <View>
-                    <Text style={styles.diaryTitle}>今日日记</Text>
-                    <Text style={styles.diaryPreview} numberOfLines={1}>
-                      {diary ? diary.content : '记录今日感想 / 感悟 / 收获'}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.diaryArrow}>→</Text>
-              </Pressable>
-            </Link>
-          </>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function QuickAction({
+  icon,
+  title,
+  subtitle,
+  color,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.quickAction, { backgroundColor: color }]} onPress={onPress}>
+      <View style={styles.quickIcon}>{icon}</View>
+      <View style={styles.quickCopy}>
+        <Text style={styles.quickTitle}>{title}</Text>
+        <Text style={styles.quickSubtitle}>{subtitle}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  unit,
+  color,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, { color }]} numberOfLines={1}>
+        {Math.round(value)}
+      </Text>
+      <Text style={styles.metricUnit}>{unit}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({
+  title,
+  action,
+  onPress,
+}: {
+  title: string;
+  action: string;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Pressable style={styles.sectionAction} onPress={onPress}>
+        <Text style={styles.sectionActionText}>{action}</Text>
+        <ChevronRight size={16} color={theme.colors.primaryDark} />
+      </Pressable>
+    </View>
+  );
+}
+
+function TimelineRow({
+  icon,
+  label,
+  caption,
+  detail,
+  value,
+  color,
+  showDivider,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  caption: string;
+  detail: string;
+  value: string;
+  color: string;
+  showDivider: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.timelineRow, showDivider && styles.timelineDivider]} onPress={onPress}>
+      <View style={styles.timelineIcon}>{icon}</View>
+      <View style={styles.timelineBody}>
+        <View style={styles.timelineTitleRow}>
+          <Text style={styles.timelineLabel}>{label}</Text>
+          <Text style={styles.timelineCaption}>{caption}</Text>
+        </View>
+        <Text style={styles.timelineDetail} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      <Text style={[styles.timelineValue, { color }]}>{value}</Text>
+    </Pressable>
+  );
+}
+
+function MacroBar({
+  label,
+  grams,
+  percent,
+  color,
+}: {
+  label: string;
+  grams: number;
+  percent: number;
+  color: string;
+}) {
+  return (
+    <View style={styles.macroRow}>
+      <View style={styles.macroLabelCol}>
+        <Text style={styles.macroLabel}>{label}</Text>
+        <Text style={styles.macroGrams}>{Math.round(grams)}g</Text>
+      </View>
+      <View style={styles.macroTrack}>
+        <View style={[styles.macroFill, { width: `${Math.min(100, percent)}%`, backgroundColor: color }]} />
+      </View>
+      <Text style={styles.macroPercent}>{percent}%</Text>
+    </View>
   );
 }
 
@@ -269,7 +364,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scrollContent: {
     padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
+    paddingBottom: 96,
     maxWidth: 600,
     width: '100%',
     alignSelf: 'center',
@@ -283,260 +378,275 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: theme.fontSizes.xxl,
     fontWeight: theme.fontWeights.bold,
-    color: theme.colors.primaryDark,
+    color: theme.colors.text,
   },
   dateText: { color: theme.colors.textMuted, fontSize: theme.fontSizes.sm, marginTop: 2 },
-
-  /* A. 顶部今日还能吃卡片 */
-  remainingCard: {
-    backgroundColor: theme.colors.primary + '15',
-    borderRadius: theme.radius.xl,
+  headerAction: {
+    minHeight: 40,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  headerActionText: {
+    color: theme.colors.primaryDark,
+    fontWeight: theme.fontWeights.semibold,
+    fontSize: theme.fontSizes.sm,
+  },
+  hero: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: theme.spacing.lg,
     marginBottom: theme.spacing.md,
-  },
-  remainingTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  remainingTextCol: { flex: 1 },
-  remainingTitle: {
-    fontSize: theme.fontSizes.md,
-    color: theme.colors.primaryDark,
-    fontWeight: theme.fontWeights.semibold,
-    marginBottom: theme.spacing.xs,
-  },
-  remainingValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  remainingValue: {
-    fontSize: theme.fontSizes.display,
-    fontWeight: theme.fontWeights.bold,
-    color: theme.colors.primaryDark,
-    letterSpacing: -1,
-  },
-  remainingUnit: {
-    fontSize: theme.fontSizes.lg,
-    color: theme.colors.primaryDark,
-    marginLeft: theme.spacing.xs,
-    fontWeight: theme.fontWeights.semibold,
-  },
-  remainingHint: {
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.textMuted,
-    marginTop: theme.spacing.sm,
-  },
-  remainingSubText: {
-    fontSize: theme.fontSizes.sm,
-    color: theme.colors.text,
-    marginTop: 2,
-    fontWeight: theme.fontWeights.medium,
-  },
-  remainingRingCol: {
-    marginLeft: theme.spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* B. 主按钮 */
-  actionRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
-  actionBtn: {
-    flex: 1,
-    minHeight: 64,
-    borderRadius: theme.radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.sm,
     ...theme.shadow.card,
   },
-  actionBtnPrimary: {
-    backgroundColor: theme.colors.primary,
+  heroCopy: { flex: 1, paddingRight: theme.spacing.md },
+  toneBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+    marginBottom: theme.spacing.sm,
   },
-  actionBtnSecondary: {
-    backgroundColor: theme.colors.secondary,
+  toneBadgeText: {
+    fontSize: theme.fontSizes.xs,
+    fontWeight: theme.fontWeights.bold,
   },
-  actionBtnIcon: {
-    marginRight: theme.spacing.sm,
+  heroLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.sm,
+    fontWeight: theme.fontWeights.medium,
   },
-  actionBtnText: {
+  heroValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 2 },
+  heroValue: {
+    color: theme.colors.primaryDark,
+    fontSize: theme.fontSizes.display,
+    fontWeight: theme.fontWeights.bold,
+    letterSpacing: 0,
+  },
+  heroValueDanger: { color: theme.colors.danger },
+  heroUnit: {
+    marginLeft: theme.spacing.xs,
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.sm,
+    fontWeight: theme.fontWeights.semibold,
+  },
+  heroTitle: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.md,
+    fontWeight: theme.fontWeights.bold,
+    marginTop: theme.spacing.xs,
+  },
+  heroSubtitle: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.sm,
+    marginTop: 2,
+    lineHeight: 20,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
+  quickAction: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...theme.shadow.card,
+  },
+  quickIcon: { marginRight: theme.spacing.sm },
+  quickCopy: { flex: 1 },
+  quickTitle: {
     color: theme.colors.textInverse,
     fontSize: theme.fontSizes.md,
     fontWeight: theme.fontWeights.bold,
   },
-  actionBtnSecondaryText: {
-    // 颜色与 textInverse 一致，但保持可扩展
+  quickSubtitle: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: theme.fontSizes.xs,
+    marginTop: 2,
   },
-
-  /* C. 紧凑三列 */
-  compactRow: {
+  metricStrip: {
     flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
-    backgroundColor: theme.colors.surfaceMuted,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
-    paddingVertical: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.lg,
+    overflow: 'hidden',
+  },
+  metric: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.sm,
-  },
-
-  /* 折叠按钮 */
-  expandBtn: {
-    paddingVertical: theme.spacing.sm,
     alignItems: 'center',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: theme.colors.border,
   },
-  expandBtnText: {
-    color: theme.colors.primaryDark,
-    fontSize: theme.fontSizes.sm,
-    fontWeight: theme.fontWeights.semibold,
+  metricLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.xs,
+    fontWeight: theme.fontWeights.medium,
   },
-
-  /* 第 2 屏通用 */
-  summaryCard: { marginBottom: theme.spacing.md },
-  sectionTitle: {
+  metricValue: {
     fontSize: theme.fontSizes.lg,
-    fontWeight: theme.fontWeights.semibold,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    fontWeight: theme.fontWeights.bold,
+    marginTop: 2,
+  },
+  metricUnit: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.xs,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: theme.spacing.md,
-  },
-  linkText: {
-    color: theme.colors.primaryDark,
-    fontSize: theme.fontSizes.sm,
-    fontWeight: '600',
-  },
-
-  /* D. 餐食列表 */
-  mealTypeBlock: {
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  mealTypeHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
   },
-  mealTypeLabel: {
+  sectionTitle: {
     color: theme.colors.text,
-    fontSize: theme.fontSizes.md,
-    fontWeight: theme.fontWeights.semibold,
+    fontSize: theme.fontSizes.lg,
+    fontWeight: theme.fontWeights.bold,
   },
-  mealTypeKcal: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.sm,
-    fontWeight: theme.fontWeights.medium,
-  },
-  mealEmptyText: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.sm,
-    fontStyle: 'italic',
-    paddingVertical: theme.spacing.xs,
-  },
-  mealItemRow: {
+  sectionAction: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    minHeight: 34,
     paddingLeft: theme.spacing.sm,
   },
-  mealItemNames: {
-    color: theme.colors.text,
+  sectionActionText: {
+    color: theme.colors.primaryDark,
     fontSize: theme.fontSizes.sm,
-    flex: 1,
-    marginRight: theme.spacing.sm,
+    fontWeight: theme.fontWeights.semibold,
   },
-  mealItemKcal: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.sm,
+  timelineSurface: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.lg,
+    overflow: 'hidden',
   },
-
-  /* E. 运动列表 */
-  exerciseRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  timelineRow: {
+    minHeight: 68,
+    paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timelineDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
-  exerciseType: {
+  timelineIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing.sm,
+  },
+  timelineBody: { flex: 1, minWidth: 0 },
+  timelineTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm },
+  timelineLabel: {
     color: theme.colors.text,
     fontSize: theme.fontSizes.md,
-    textTransform: 'capitalize',
+    fontWeight: theme.fontWeights.bold,
   },
-  exerciseMeta: {
-    color: theme.colors.accent,
+  timelineCaption: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.xs,
+  },
+  timelineDetail: {
+    color: theme.colors.textMuted,
     fontSize: theme.fontSizes.sm,
+    marginTop: 2,
   },
-
-  /* F. 营养素甜甜圈 */
-  donutRow: {
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
+  timelineValue: {
+    fontSize: theme.fontSizes.sm,
+    fontWeight: theme.fontWeights.bold,
+    marginLeft: theme.spacing.sm,
   },
-
-  /* G. 趋势入口 */
-  trendLink: {
-    paddingVertical: theme.spacing.md,
-    alignItems: 'center',
+  macroSurface: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
   },
-  trendLinkText: {
-    color: theme.colors.primaryDark,
-    fontSize: theme.fontSizes.md,
-    fontWeight: theme.fontWeights.medium,
-  },
-
-  /* H. 日记入口 */
-  diaryLink: {
+  macroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: theme.spacing.md,
+    minHeight: 38,
   },
-  diaryLinkLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  diaryIcon: { marginRight: theme.spacing.md },
-  diaryTitle: {
-    fontSize: theme.fontSizes.md,
-    fontWeight: theme.fontWeights.semibold,
+  macroLabelCol: { width: 58 },
+  macroLabel: {
     color: theme.colors.text,
+    fontSize: theme.fontSizes.sm,
+    fontWeight: theme.fontWeights.bold,
   },
-  diaryPreview: {
-    fontSize: theme.fontSizes.xs,
+  macroGrams: {
     color: theme.colors.textMuted,
-    maxWidth: 200,
+    fontSize: theme.fontSizes.xs,
   },
-  diaryArrow: {
-    color: theme.colors.primaryDark,
-    fontSize: theme.fontSizes.lg,
-    fontWeight: '600',
+  macroTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    overflow: 'hidden',
   },
-
-  emptyText: {
+  macroFill: {
+    height: '100%',
+    borderRadius: theme.radius.pill,
+  },
+  macroPercent: {
+    width: 42,
+    textAlign: 'right',
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.sm,
-    textAlign: 'center',
-    paddingVertical: theme.spacing.md,
+    fontWeight: theme.fontWeights.medium,
+  },
+  diaryCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceWarm,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.accentSoft,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  diaryIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing.md,
+  },
+  diaryText: { flex: 1, minWidth: 0 },
+  diaryTitle: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.md,
+    fontWeight: theme.fontWeights.bold,
+  },
+  diaryPreview: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.sm,
+    marginTop: 2,
   },
 });

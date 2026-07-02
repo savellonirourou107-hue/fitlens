@@ -11,15 +11,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
+import { Annoyed, Frown, Laugh, Meh, Smile, type LucideIcon } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
 import { genId } from '../../core/id';
 import { format, parseISO } from 'date-fns';
-import { MOOD_LABELS, MOOD_EMOJI } from '../../types';
+import { MOOD_LABELS } from '../../types';
 import type { Mood, DiaryEntry } from '../../types';
 
-const MOODS: Mood[] = ['great', 'good', 'ok', 'bad', 'terrible'];
+const MOODS: { value: Mood; icon: LucideIcon }[] = [
+  { value: 'great', icon: Laugh },
+  { value: 'good', icon: Smile },
+  { value: 'ok', icon: Meh },
+  { value: 'bad', icon: Annoyed },
+  { value: 'terrible', icon: Frown },
+];
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 export default function DiaryScreen() {
   const diary = useAppStore((s) => s.getDiaryByDate(format(new Date(), 'yyyy-MM-dd')));
@@ -80,6 +88,8 @@ export default function DiaryScreen() {
   };
 
   const wordCount = content.length;
+  const todayDate = parseISO(today);
+  const weekdayLabel = WEEKDAY_LABELS[todayDate.getDay()] ?? '';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -91,24 +101,27 @@ export default function DiaryScreen() {
         {/* 标题 */}
         <View style={styles.header}>
           <Text style={styles.title}>今日日记</Text>
-          <Text style={styles.dateText}>{format(parseISO(today), 'M月d日 EEEE')}</Text>
+          <Text style={styles.dateText}>{format(todayDate, 'M月d日')} {weekdayLabel}</Text>
         </View>
 
         {/* 心情 */}
         <Card style={styles.section}>
           <Text style={styles.sectionLabel}>今日心情</Text>
           <View style={styles.moodRow}>
-            {MOODS.map((m) => (
+            {MOODS.map(({ value, icon: Icon }) => (
               <Pressable
-                key={m}
-                style={[styles.moodBtn, mood === m && styles.moodBtnActive]}
-                onPress={() => setMood(mood === m ? undefined : m)}
+                key={value}
+                style={[styles.moodBtn, mood === value && styles.moodBtnActive]}
+                onPress={() => setMood(mood === value ? undefined : value)}
               >
-                <Text style={styles.moodEmoji}>{MOOD_EMOJI[m]}</Text>
+                <Icon
+                  size={24}
+                  color={mood === value ? theme.colors.primaryDark : theme.colors.textMuted}
+                />
                 <Text
-                  style={[styles.moodLabel, mood === m && styles.moodLabelActive]}
+                  style={[styles.moodLabel, mood === value && styles.moodLabelActive]}
                 >
-                  {MOOD_LABELS[m]}
+                  {MOOD_LABELS[value]}
                 </Text>
               </Pressable>
             ))}
@@ -143,9 +156,7 @@ export default function DiaryScreen() {
           </Pressable>
         ) : null}
 
-        <Text style={styles.tipText}>
-          记录减脂路上的小感悟，坚持下去 ✨
-        </Text>
+        <Text style={styles.tipText}>记录减脂路上的小感悟，坚持下去</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -155,7 +166,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scrollContent: {
     padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
+    paddingBottom: 96,
     maxWidth: 600,
     width: '100%',
     alignSelf: 'center',
@@ -190,7 +201,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.surfaceMuted,
   },
-  moodEmoji: { fontSize: 26 },
   moodLabel: {
     fontSize: theme.fontSizes.xs,
     color: theme.colors.textMuted,
