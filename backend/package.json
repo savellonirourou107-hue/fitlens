@@ -1,6 +1,7 @@
 {
   "name": "fitlens-backend",
   "version": "0.1.0",
+  "main": "src/index.js",
   "private": true,
   "type": "module",
   "engines": {
