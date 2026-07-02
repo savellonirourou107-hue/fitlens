@@ -1,36 +1,119 @@
 /**
- * FitLens 后端 API 客户端
- * 后端地址通过环境变量或默认值配置。API Key 只在后端，前端不接触。
- *
- * 上传文件策略（兼容 Android/iOS/Web）：
- * - 上传前用 expo-image-manipulator 把图片最长边压到 1024px、quality 0.8
- * - Android: 用 SDK 56 新 `new File(uri)`（本身就是 Blob）直接 append 到 FormData
- * - Web:     用 fetch(blob:uri) 取 Blob，再 append
- * 这样避开了 RN FormData 在 Android 上不支持 {uri,name,type} 对象格式的坑
- * (报错: "Unsupported FormData implementation")
- *
- * 30 秒超时：使用 AbortController 显式设置，超过后 throw
- *
- * MIME 推断：优先用 ImagePickerAsset.mimeType / fileName 后缀，避免错把 jpg 当 jpeg 上传失败
+ * 通用 fetch 封装
+ * - 自动从 SecureStore 读 token 加 Authorization header
+ * - 401 自动清 token（业务层根据状态决定是否跳登录）
+ * - 30s 超时
+ * - 网络/超时/服务端错误统一抛 ApiError，子模块 catch 时给用户友好提示
  */
+import { getToken, clearToken } from '../storage/secureStore';
+
+export const API_BASE_URL =
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL) ||
+  'https://fitlens-backend-v2.onrender.com';
+
+export const API_TIMEOUT_MS = 30_000;
+
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  constructor(message: string, status: number, code = 'UNKNOWN') {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** 网络/超时：服务端启动中或离线 */
+export class NetworkError extends ApiError {
+  constructor(message: string) {
+    super(message, 0, 'NETWORK');
+  }
+}
+
+/** 401 抛出，会清 token */
+export class AuthError extends ApiError {
+  constructor(message: string) {
+    super(message, 401, 'AUTH_INVALID');
+  }
+}
+
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  body?: unknown;
+  auth?: boolean; // 是否带 Authorization（默认 true）
+  timeoutMs?: number;
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const { method = 'GET', body, auth = true, timeoutMs = API_TIMEOUT_MS } = opts;
+  const url = `${API_BASE_URL}${path}`;
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+  if (auth) {
+    const token = await getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    clearTimeout(timer);
+    if (e?.name === 'AbortError') {
+      throw new NetworkError('服务器启动中，请稍后再试');
+    }
+    throw new NetworkError('网络不可用，已保留本地数据');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status === 401 && auth) {
+    await clearToken();
+    throw new AuthError('登录已过期，请重新登录');
+  }
+
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    throw new ApiError(`服务器返回异常 (HTTP ${res.status})`, res.status);
+  }
+
+  if (!res.ok || (json && json.success === false)) {
+    const code = json?.error?.code || 'UNKNOWN';
+    const msg = json?.error?.message || `请求失败 (HTTP ${res.status})`;
+    if (res.status === 401) {
+      await clearToken();
+      throw new AuthError(msg);
+    }
+    throw new ApiError(msg, res.status, code);
+  }
+
+  return (json?.data ?? json) as T;
+}
+
+/* ==================== AI 识别（multipart，/recognize/* 公开）==================== */
 
 import { File } from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
-const DEFAULT_BASE_URL =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BACKEND_URL) ||
-  'http://localhost:4000';
-
-export const BACKEND_URL = DEFAULT_BASE_URL;
-
-/** 识别请求总超时（毫秒） */
 export const RECOGNIZE_TIMEOUT_MS = 30_000;
 
-/** AI 识别隐私提示文案（UI 复用，避免硬编码两份） */
 export const AI_PRIVACY_NOTICE =
   '上传图片至服务器用于识别，不会公开展示。请避免上传身份证、聊天截图、人脸等敏感信息。';
 
-/** AI 餐食识别返回的食物项 */
 export interface RecognizedFoodItem {
   name: string;
   portionGrams: number;
@@ -40,17 +123,14 @@ export interface RecognizedFoodItem {
   fatG: number;
 }
 
-/** 餐食识别结果 */
 export interface MealRecognitionData {
   items: RecognizedFoodItem[];
   modelVersion: string;
   processingMs: number;
   message?: string;
-  /** AI 营养顾问点评（后端新增，可选） */
   comment?: string;
 }
 
-/** 运动识别结果 */
 export interface ExerciseRecognitionData {
   type: 'walking' | 'running' | 'cycling' | 'strength' | 'yoga' | 'swimming' | 'hiit' | 'other';
   durationMin: number;
@@ -61,31 +141,25 @@ export interface ExerciseRecognitionData {
   processingMs?: number;
 }
 
-/** ImagePicker asset 的最小字段（不强制依赖具体 SDK 类型） */
 export interface ImageAssetLike {
   uri: string;
   mimeType?: string | null;
   fileName?: string | null;
 }
 
-interface ApiError {
-  success: false;
-  error: string;
-  details?: unknown;
-  message?: string;
+export function guessMime(nameOrUri: string): string {
+  const cleaned = nameOrUri.split('?')[0] ?? '';
+  const ext = cleaned.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'heic' || ext === 'heif') return 'image/heic';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  return '';
 }
 
-function isError(r: unknown): r is ApiError {
-  return typeof r === 'object' && r !== null && (r as ApiError).success === false;
-}
-
-/**
- * 推断图片 MIME 类型。
- * 优先级：asset.mimeType > asset.fileName 后缀 > fallback
- */
 export function inferMime(
   asset: { mimeType?: string | null; fileName?: string | null } | null | undefined,
-  fallback: string = 'image/jpeg',
+  fallback = 'image/jpeg',
 ): string {
   const fromAsset = asset?.mimeType?.trim();
   if (fromAsset) return fromAsset;
@@ -94,81 +168,6 @@ export function inferMime(
   return fallback;
 }
 
-/**
- * 调用后端识别餐食图片。
- * @param imageUri 本地图片 uri（file:// / blob: / http(s)）
- * @param asset    可选的 ImagePicker asset，用于推断 MIME（不传则根据 uri 后缀）
- */
-export async function recognizeMealImage(
-  imageUri: string,
-  asset?: ImageAssetLike | null,
-): Promise<MealRecognitionData> {
-  const { uri, mime } = await compressImage(imageUri, asset);
-  const formData = await buildFormData(uri, mime);
-  const res = await fetchWithTimeout(`${BACKEND_URL}/recognize/meal`, {
-    method: 'POST',
-    body: formData,
-    headers: { Accept: 'application/json' },
-  });
-  const json: unknown = await res.json();
-  if (!res.ok || isError(json)) {
-    const msg = isError(json)
-      ? (json.message || json.error)
-      : `识别失败 (HTTP ${res.status})`;
-    throw new Error(msg);
-  }
-  return (json as { data: MealRecognitionData }).data;
-}
-
-/**
- * 调用后端识别运动截图。
- */
-export async function recognizeExerciseImage(
-  imageUri: string,
-  asset?: ImageAssetLike | null,
-): Promise<ExerciseRecognitionData> {
-  const { uri, mime } = await compressImage(imageUri, asset);
-  const formData = await buildFormData(uri, mime);
-  const res = await fetchWithTimeout(`${BACKEND_URL}/recognize/exercise`, {
-    method: 'POST',
-    body: formData,
-    headers: { Accept: 'application/json' },
-  });
-  const json: unknown = await res.json();
-  if (!res.ok || isError(json)) {
-    const msg = isError(json)
-      ? (json.message || json.error)
-      : `识别失败 (HTTP ${res.status})`;
-    throw new Error(msg);
-  }
-  return (json as { data: ExerciseRecognitionData }).data;
-}
-
-/**
- * fetch 包装：30 秒超时（AbortController）。超时 throw '识别超时（30秒），请检查网络或重试'
- */
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RECOGNIZE_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (e) {
-    if (
-      e instanceof Error &&
-      (e.name === 'AbortError' || e.message?.toLowerCase().includes('abort'))
-    ) {
-      throw new Error('识别超时（30秒），请检查网络或重试');
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * 上传前压缩图片。最长边 1024px，quality 0.8，统一 JPEG。
- * 压缩失败则降级用原 uri（不阻断识别流程）。
- */
 export async function compressImage(
   imageUri: string,
   asset?: ImageAssetLike | null,
@@ -182,81 +181,65 @@ export async function compressImage(
     );
     return { uri: result.uri, mime: 'image/jpeg' };
   } catch (e) {
-    // 压缩失败就回退原图，避免识别完全用不了
     console.warn('[FitLens] compressImage failed, fallback to original:', e);
     return { uri: imageUri, mime };
   }
 }
 
-/**
- * 把本地图片 uri 转成 multipart FormData。
- * Android/iOS: SDK 56 新 `new File(uri)` 本身就是 Blob，直接 append。
- * Web:         fetch(blob:uri) 转 Blob。
- */
-async function buildFormData(imageUri: string, mime: string): Promise<FormData> {
-  const filename = deriveFilename(imageUri, mime);
-  const blob = await uriToBlob(imageUri, mime);
-
-  const formData = new FormData();
-  // 标准浏览器/Web FormData: append(name, blob, filename)
-  formData.append('image', blob, filename);
-  return formData;
+async function uriToBlob(uri: string): Promise<Blob> {
+  if (uri.startsWith('blob:') || uri.startsWith('http://') || uri.startsWith('https://')) {
+    const res = await fetch(uri);
+    return res.blob();
+  }
+  try {
+    return new File(uri) as unknown as Blob;
+  } catch (e) {
+    throw new Error(`读取图片失败: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
-/**
- * 推导上传时用的文件名（保留扩展名给后端）。
- */
 function deriveFilename(imageUri: string, mime: string): string {
   const tail = imageUri.split('/').pop() ?? '';
   const fromUri = tail.split('?')[0];
   if (fromUri && fromUri.includes('.')) return fromUri;
   const ext =
-    mime === 'image/png'
-      ? 'png'
-      : mime === 'image/webp'
-        ? 'webp'
-        : mime === 'image/heic' || mime === 'image/heif'
-          ? 'heic'
-          : 'jpg';
+    mime === 'image/png' ? 'png' :
+    mime === 'image/webp' ? 'webp' :
+    mime === 'image/heic' || mime === 'image/heif' ? 'heic' :
+    'jpg';
   return `photo.${ext}`;
 }
 
-/**
- * 把任意图片 uri 转为 Blob。
- * - file:// 开头（Android/iOS）: 用 SDK 56 新 `new File(uri)`，File 本身就是 Blob，
- *   直接 append 到 FormData，无需 base64 → Uint8Array 中转
- * - blob: 开头（Web）: fetch(blob:uri) 拿 Blob
- * - http(s)://（罕见）: 直接 fetch
- */
-async function uriToBlob(uri: string, mime: string): Promise<Blob> {
-  // Web blob:
-  if (uri.startsWith('blob:')) {
-    const res = await fetch(uri);
-    return await res.blob();
-  }
-  // 远程 URL（极少用到）
-  if (uri.startsWith('http://') || uri.startsWith('https://')) {
-    const res = await fetch(uri);
-    return await res.blob();
-  }
-  // Android/iOS 本地文件: file://, content://, ph:// 等
-  // SDK 56: new File(uri) 继承 Blob，可直接 append 到 FormData
+async function recognizeWithImage<T>(path: string, imageUri: string, asset?: ImageAssetLike | null): Promise<T> {
+  const { uri, mime } = await compressImage(imageUri, asset);
+  const filename = deriveFilename(uri, mime);
+  const blob = await uriToBlob(uri);
+  const formData = new FormData();
+  formData.append('image', blob, filename);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RECOGNIZE_TIMEOUT_MS);
   try {
-    return new File(uri) as unknown as Blob;
-  } catch (e) {
-    throw new Error(
-      `读取图片失败: ${e instanceof Error ? e.message : String(e)} (uri=${uri.slice(0, 60)}…)`,
-    );
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      body: formData,
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    const json: any = await res.json();
+    if (!res.ok || (json && json.success === false)) {
+      throw new Error(json?.error?.message || `识别失败 (HTTP ${res.status})`);
+    }
+    return (json?.data ?? json) as T;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-/** 根据文件名/uri 后缀推断 MIME，没匹配则返回 '' */
-export function guessMime(nameOrUri: string): string {
-  const cleaned = nameOrUri.split('?')[0] ?? '';
-  const ext = cleaned.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'png') return 'image/png';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'heic' || ext === 'heif') return 'image/heic';
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  return '';
+export async function recognizeMealImage(imageUri: string, asset?: ImageAssetLike | null): Promise<MealRecognitionData> {
+  return recognizeWithImage<MealRecognitionData>('/recognize/meal', imageUri, asset);
+}
+
+export async function recognizeExerciseImage(imageUri: string, asset?: ImageAssetLike | null): Promise<ExerciseRecognitionData> {
+  return recognizeWithImage<ExerciseRecognitionData>('/recognize/exercise', imageUri, asset);
 }

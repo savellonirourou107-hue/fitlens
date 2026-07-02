@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { BookOpen, CalendarDays, CircleUser } from 'lucide-react-native';
+import { BookOpen, CalendarDays, CircleUser, Users } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../theme';
 
@@ -35,6 +35,14 @@ export default function TabsLayout() {
           title: '今日',
           tabBarLabel: '今日',
           tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="friends"
+        options={{
+          title: '好友',
+          tabBarLabel: '好友',
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
         }}
       />
       <Tabs.Screen

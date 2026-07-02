@@ -12,10 +12,13 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mars, Venus, type LucideIcon } from 'lucide-react-native';
+import { Link } from 'expo-router';
+import { Mars, Venus, type LucideIcon, ChevronRight, Settings as SettingsIcon } from 'lucide-react-native';
 import { theme } from '../../theme';
 import { Card } from '../../components/Card';
 import { useAppStore } from '../../store/useAppStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { Avatar } from '../../components/Avatar';
 import type { UserProfile, Sex, ActivityLevel, Goal } from '../../types';
 import { ACTIVITY_LEVELS, GOALS } from '../../types';
 import { bmrHarrisBenedict, tdee, dailyTargetKcal, macroTargets } from '../../core/calc';
@@ -37,6 +40,7 @@ const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
 export default function ProfileScreen() {
   const profile = useAppStore((s) => s.profile);
   const setProfile = useAppStore((s) => s.setProfile);
+  const authUser = useAuthStore((s) => s.user);
 
   // 表单状态
   const [sex, setSex] = useState<Sex>(profile?.sex ?? 'male');
@@ -119,6 +123,26 @@ export default function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* 账号区 */}
+          {authUser && (
+            <Card style={styles.accountCard}>
+              <View style={styles.accountRow}>
+                <Avatar seed={authUser.avatarSeed} nickname={authUser.nickname} size={48} />
+                <View style={styles.accountInfo}>
+                  <Text style={styles.accountName}>{authUser.nickname}</Text>
+                  <Text style={styles.accountEmail}>{authUser.email}</Text>
+                </View>
+              </View>
+              <Link href="/settings/account" asChild>
+                <Pressable style={styles.accountLink} accessibilityLabel="账号设置">
+                  <SettingsIcon size={16} color={theme.colors.textMuted} />
+                  <Text style={styles.accountLinkText}>账号设置</Text>
+                  <ChevronRight size={16} color={theme.colors.textMuted} />
+                </Pressable>
+              </Link>
+            </Card>
+          )}
+
         {/* 顶部标题 */}
         <View style={styles.header}>
           <Text style={styles.title}>个人资料</Text>
@@ -514,6 +538,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  accountCard: { marginBottom: theme.spacing.md },
+  accountRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  accountInfo: { flex: 1 },
+  accountName: { fontSize: theme.fontSizes.lg, fontWeight: '700', color: theme.colors.text },
+  accountEmail: { fontSize: theme.fontSizes.sm, color: theme.colors.textMuted, marginTop: 2 },
+  accountLink: {
+    marginTop: theme.spacing.md, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs,
+    paddingTop: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border,
+  },
+  accountLinkText: { flex: 1, fontSize: theme.fontSizes.sm, color: theme.colors.textMuted },
   saveBtnText: {
     color: theme.colors.textInverse,
     fontSize: theme.fontSizes.lg,

@@ -17,6 +17,34 @@ import {
   lastNDays,
 } from '../core/calc';
 import * as repo from '../core/repository';
+import { putDailySummary } from '../api/sync';
+import { getToken } from '../storage/secureStore';
+
+/**
+ * 把今日聚合数字 fire-and-forget 上传到云端
+ * - 只在用户已登录（token 存在）时调用
+ * - 失败不抛（API 内部已 swallow），不阻塞本地业务
+ */
+function scheduleSync(date: string, profile: UserProfile | null, meals: Meal[], exercises: ExerciseEntry[]) {
+  void (async () => {
+    const token = await getToken();
+    if (!token) return; // 未登录，不同步
+    const dayMeals = meals.filter((m) => m.date === date);
+    const dayExercises = exercises.filter((x) => x.date === date);
+    const intakeKcal = dayMeals.reduce(
+      (s, m) => s + m.items.reduce((ss, i) => ss + i.caloriesKcal, 0),
+      0,
+    );
+    const burnedKcal = dayExercises.reduce((s, x) => s + x.caloriesBurnedKcal, 0);
+    const targetKcal = profile ? dailyTargetKcal(profile) : 0;
+    await putDailySummary({
+      date,
+      intakeKcal: Math.round(intakeKcal),
+      burnedKcal: Math.round(burnedKcal),
+      targetKcal: Math.round(targetKcal),
+    });
+  })();
+}
 
 export interface AppState {
   profile: UserProfile | null;
@@ -63,7 +91,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   addMeal: (meal) => {
     void repo
       .saveMeal(meal)
-      .then(() => set((state) => ({ meals: [...state.meals, meal] })))
+      .then(() => {
+        set((state) => ({ meals: [...state.meals, meal] }));
+        scheduleSync(meal.date, get().profile, [...get().meals, meal], get().exercises);
+      })
       .catch((e) => console.error('saveMeal failed', e));
   },
   updateMeal: (id, patch) => {
@@ -71,25 +102,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = prev.map((m) => (m.id === id ? { ...m, ...patch } : m));
     // 仅乐观更新内存态；DB 持久化不在本 action 范围内（如需更新 DB 调用方应单独保存）
     set({ meals: next });
+    const changed = next.find((m) => m.id === id);
+    if (changed) scheduleSync(changed.date, get().profile, next, get().exercises);
   },
   removeMeal: (id) => {
+    const removed = get().meals.find((m) => m.id === id);
     void repo
       .deleteMealDb(id)
-      .then(() => set((state) => ({ meals: state.meals.filter((m) => m.id !== id) })))
+      .then(() => {
+        const meals = get().meals.filter((m) => m.id !== id);
+        set({ meals });
+        if (removed) scheduleSync(removed.date, get().profile, meals, get().exercises);
+      })
       .catch((e) => console.error('deleteMeal failed', e));
   },
   addExercise: (e) => {
     void repo
       .saveExercise(e)
-      .then(() => set((state) => ({ exercises: [...state.exercises, e] })))
+      .then(() => {
+        set((state) => ({ exercises: [...state.exercises, e] }));
+        scheduleSync(e.date, get().profile, get().meals, [...get().exercises, e]);
+      })
       .catch((err) => console.error('saveExercise failed', err));
   },
   removeExercise: (id) => {
+    const removed = get().exercises.find((x) => x.id === id);
     void repo
       .deleteExerciseDb(id)
-      .then(() =>
-        set((state) => ({ exercises: state.exercises.filter((x) => x.id !== id) })),
-      )
+      .then(() => {
+        const exercises = get().exercises.filter((x) => x.id !== id);
+        set({ exercises });
+        if (removed) scheduleSync(removed.date, get().profile, get().meals, exercises);
+      })
       .catch((e) => console.error('deleteExercise failed', e));
   },
   upsertDiary: (diary) => {
