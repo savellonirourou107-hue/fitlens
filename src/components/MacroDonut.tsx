@@ -42,15 +42,16 @@ export default function MacroDonut({
       <View style={[styles.wrapper, { width: size }]}>
         <View style={styles.donutWrap}>
           <Svg width={size} height={size}>
-            <Circle
-              cx={center}
-              cy={center}
-              r={radius}
-              stroke={theme.colors.border}
-              strokeWidth={strokeWidth}
-              fill="none"
-              transform={`rotate(-90 ${center} ${center})`}
-            />
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={theme.colors.border}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeLinecap="round"
+            transform={`rotate(-90 ${center} ${center})`}
+          />
           </Svg>
           <View style={styles.centerLayer}>
             <Text style={styles.emptyText}>无数据</Text>
@@ -112,6 +113,7 @@ export default function MacroDonut({
             stroke={theme.colors.surfaceMuted}
             strokeWidth={strokeWidth}
             fill="none"
+            strokeLinecap="round"
             transform={`rotate(-90 ${center} ${center})`}
           />
           {segments.map((seg, i) => (
@@ -125,7 +127,7 @@ export default function MacroDonut({
               fill="none"
               strokeDasharray={`${seg.arc} ${circumference - seg.arc}`}
               strokeDashoffset={offsets[i]}
-              strokeLinecap="butt"
+              strokeLinecap="round"
               transform={`rotate(-90 ${center} ${center})`}
             />
           ))}

@@ -15,14 +15,14 @@ export const theme = {
     dangerSoft: '#FEE2E2',
     warning: '#F59E0B',
     success: '#10B981',
-    background: '#F6F7F4',
+    background: '#F8FAF9',
     surface: '#FFFFFF',
-    surfaceMuted: '#EEF2EA',
+    surfaceMuted: '#F1F5F2',
     surfaceWarm: '#FFF7ED',
     text: '#162015',
     textMuted: '#667266',
     textInverse: '#FFFFFF',
-    border: '#DDE5DA',
+    border: '#E2E8E0',
     chart: [
       '#16A34A',
       '#0284C7',
@@ -45,10 +45,10 @@ export const theme = {
   shadow: {
     card: {
       shadowColor: '#162015',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 6,
-      elevation: 2,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 3,
     },
   },
 };

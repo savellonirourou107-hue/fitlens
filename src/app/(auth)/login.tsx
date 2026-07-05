@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
+  View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
@@ -22,6 +22,7 @@ export default function LoginScreen() {
       Alert.alert('提示', '请填写邮箱和密码');
       return;
     }
+    Keyboard.dismiss();
     setBusy(true);
     try {
       await login(email.trim().toLowerCase(), password);
@@ -100,19 +101,20 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scroll: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, maxWidth: 480, width: '100%', alignSelf: 'center' },
-  header: { marginBottom: theme.spacing.xl, marginTop: theme.spacing.xl },
+  header: { marginBottom: theme.spacing.xl, marginTop: theme.spacing.xl * 2 },
   title: { fontSize: theme.fontSizes.display, fontWeight: '700', color: theme.colors.primaryDark },
   subtitle: { fontSize: theme.fontSizes.md, color: theme.colors.textMuted, marginTop: theme.spacing.xs },
   form: { gap: theme.spacing.sm },
   label: { fontSize: theme.fontSizes.sm, fontWeight: '600', color: theme.colors.text, marginTop: theme.spacing.md },
   input: {
-    borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md,
+    borderWidth: 1.5, borderColor: theme.colors.border, borderRadius: theme.radius.md,
     padding: theme.spacing.md, backgroundColor: theme.colors.surface, color: theme.colors.text,
     fontSize: theme.fontSizes.md,
   },
   submit: {
     marginTop: theme.spacing.xl, paddingVertical: theme.spacing.md, borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.primary, alignItems: 'center',
+    ...theme.shadow.card,
   },
   submitDisabled: { opacity: 0.6 },
   submitText: { color: theme.colors.textInverse, fontWeight: '700', fontSize: theme.fontSizes.lg },

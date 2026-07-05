@@ -100,10 +100,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateMeal: (id, patch) => {
     const prev = get().meals;
     const next = prev.map((m) => (m.id === id ? { ...m, ...patch } : m));
-    // 仅乐观更新内存态；DB 持久化不在本 action 范围内（如需更新 DB 调用方应单独保存）
     set({ meals: next });
     const changed = next.find((m) => m.id === id);
-    if (changed) scheduleSync(changed.date, get().profile, next, get().exercises);
+    if (changed) {
+      void repo.saveMeal(changed).catch((e) => console.error('updateMeal save failed', e));
+      scheduleSync(changed.date, get().profile, next, get().exercises);
+    }
   },
   removeMeal: (id) => {
     const removed = get().meals.find((m) => m.id === id);
