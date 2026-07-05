@@ -279,6 +279,10 @@ function stripThinkTags(text) {
  * @throws {Error} 调用或解析失败时抛错
  */
 export async function recognizeMeal(imageBase64, mimeType = 'image/jpeg') {
+  // 仅接受图像类型；其它 mimetype（如 text/html、application/javascript）
+  // 既会被上游风控拒绝，也会浪费配额，统一在入口拒绝
+  assertImageMime(mimeType);
+
   const model = process.env.MINIMAX_VISION_MODEL || 'MiniMax-M3';
 
   const prompt =
@@ -329,6 +333,14 @@ function numOr(v) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+/** 入口处白名单 mimetype，非图像格式立即拒绝（防御 client-controlled Content-Type） */
+function assertImageMime(mimeType) {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+  if (typeof mimeType !== 'string' || !allowed.includes(mimeType.toLowerCase())) {
+    throw new Error(`不支持的图片类型: ${mimeType}`);
+  }
+}
+
 /**
  * 运动截图识别：从 Keep 等运动软件截图中读取运动类型、时长、消耗热量等。
  *
@@ -338,6 +350,8 @@ function numOr(v) {
  * @throws {Error} 调用或解析失败时抛错
  */
 export async function recognizeExercise(imageBase64, mimeType = 'image/jpeg') {
+  assertImageMime(mimeType);
+
   const allowedTypes = ['walking', 'running', 'cycling', 'strength', 'yoga', 'swimming', 'hiit', 'other'];
 
   const prompt =
