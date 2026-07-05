@@ -87,7 +87,9 @@ router.post('/exercise', upload.single('image'), async (req, res) => {
     const base64Image = req.file.buffer.toString('base64');
     const mimeType = req.file.mimetype;
 
+    const startedAt = Date.now();
     const raw = await recognizeExercise(base64Image, mimeType);
+    const processingMs = Date.now() - startedAt;
 
     const parsed = safeParseExercise(raw);
     if (!parsed.success) {
@@ -100,7 +102,10 @@ router.post('/exercise', upload.single('image'), async (req, res) => {
 
     return res.json({
       success: true,
-      data: parsed.data,
+      data: {
+        ...parsed.data,
+        processingMs,
+      },
     });
   } catch (err) {
     console.error('[/recognize/exercise] error:', err);
