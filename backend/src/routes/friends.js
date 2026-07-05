@@ -208,61 +208,70 @@ router.get('/requests', async (req, res) => {
  * - 响应字段严格白名单
  */
 router.get('/:id/today', async (req, res) => {
-  const otherId = req.params.id;
-  if (!/^[0-9a-f-]{36}$/i.test(otherId)) {
+  // 严格 UUID 校验，避免宽松正则放行非 UUID 字符串后被 PG 拒抛
+  const uuidSchema = z.string().uuid();
+  const parsedId = uuidSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
     return error(res, 400, 'INVALID_BODY', '无效的用户 ID');
   }
+  const otherId = parsedId.data;
   if (otherId === req.userId) {
     return error(res, 400, 'INVALID_BODY', '不能查询自己');
   }
-  const friend = await isAcceptedFriend(req.userId, otherId);
-  if (!friend) {
-    return error(res, 403, 'NOT_AUTHORIZED', '只能查看好友的今日数据');
-  }
-  // 关键：SQL 只查 daily_summaries，绝不 join meals / exercises / diaries
-  const userRows = await sql`
-    SELECT id, nickname, avatar_seed FROM users WHERE id = ${otherId} LIMIT 1
-  `;
-  if (userRows.length === 0) {
-    return error(res, 404, 'NOT_FOUND', '用户不存在');
-  }
-  const today = new Date().toISOString().slice(0, 10);
-  const summaryRows = await sql`
-    SELECT intake_kcal, burned_kcal, target_kcal, updated_at
-    FROM daily_summaries
-    WHERE user_id = ${otherId} AND date = ${today}
-    LIMIT 1
-  `;
-  const u = userRows[0];
-  // 字段白名单兜底：手动构造对象，避免传多余字段
-  const data = summaryRows.length > 0
-    ? {
-        userId: u.id,
-        nickname: u.nickname,
-        avatarSeed: u.avatar_seed,
-        date: today,
-        intakeKcal: summaryRows[0].intake_kcal,
-        burnedKcal: summaryRows[0].burned_kcal,
-        targetKcal: summaryRows[0].target_kcal,
-        updatedAt: summaryRows[0].updated_at,
-      }
-    : {
-        userId: u.id,
-        nickname: u.nickname,
-        avatarSeed: u.avatar_seed,
-        date: today,
-        intakeKcal: 0,
-        burnedKcal: 0,
-        targetKcal: 0,
-        updatedAt: null,
-      };
-  // 二次防御：运行时断言 key 是白名单子集
-  for (const k of Object.keys(data)) {
-    if (!TODAY_PUBLIC_FIELDS.includes(k)) {
-      return error(res, 500, 'INTERNAL', '隐私字段泄漏');
+  try {
+    const friend = await isAcceptedFriend(req.userId, otherId);
+    if (!friend) {
+      return error(res, 403, 'NOT_AUTHORIZED', '只能查看好友的今日数据');
     }
+    // 关键：SQL 只查 daily_summaries，绝不 join meals / exercises / diaries
+    const userRows = await sql`
+      SELECT id, nickname, avatar_seed FROM users WHERE id = ${otherId} LIMIT 1
+    `;
+    if (userRows.length === 0) {
+      return error(res, 404, 'NOT_FOUND', '用户不存在');
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const summaryRows = await sql`
+      SELECT intake_kcal, burned_kcal, target_kcal, updated_at
+      FROM daily_summaries
+      WHERE user_id = ${otherId} AND date = ${today}
+      LIMIT 1
+    `;
+    const u = userRows[0];
+    // 字段白名单兜底：手动构造对象，避免传多余字段
+    const data = summaryRows.length > 0
+      ? {
+          userId: u.id,
+          nickname: u.nickname,
+          avatarSeed: u.avatar_seed,
+          date: today,
+          intakeKcal: summaryRows[0].intake_kcal,
+          burnedKcal: summaryRows[0].burned_kcal,
+          targetKcal: summaryRows[0].target_kcal,
+          updatedAt: summaryRows[0].updated_at,
+        }
+      : {
+          userId: u.id,
+          nickname: u.nickname,
+          avatarSeed: u.avatar_seed,
+          date: today,
+          intakeKcal: 0,
+          burnedKcal: 0,
+          targetKcal: 0,
+          updatedAt: null,
+        };
+    // 二次防御：运行时断言 key 是白名单子集
+    for (const k of Object.keys(data)) {
+      if (!TODAY_PUBLIC_FIELDS.includes(k)) {
+        return error(res, 500, 'INTERNAL', '隐私字段泄漏');
+      }
+    }
+    return ok(res, data);
+  } catch (e) {
+    // DB 抛错统一兜底为 503，不再裸 500
+    console.error('[/friends/:id/today] error:', e);
+    return error(res, 503, 'SERVICE_UNAVAILABLE', '服务暂不可用，请稍后再试');
   }
-  return ok(res, data);
 });
 
 export default router;
