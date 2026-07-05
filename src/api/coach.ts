@@ -10,7 +10,18 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export function sendChat(message: string): Promise<{ reply: string; remaining: number }> {
+export interface CoachUsage {
+  used: number | null;
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
+}
+
+export interface CoachChatResponse extends Partial<CoachUsage> {
+  reply: string;
+}
+
+export function sendChat(message: string): Promise<CoachChatResponse> {
   return apiFetch('/coach/chat', { method: 'POST', body: { message } });
 }
 
@@ -22,6 +33,6 @@ export function clearHistory(): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>('/coach/history', { method: 'DELETE' });
 }
 
-export function getUsage(): Promise<{ used: number; limit: number; remaining: number }> {
-  return apiFetch<{ used: number; limit: number; remaining: number }>('/coach/usage');
+export function getUsage(): Promise<CoachUsage> {
+  return apiFetch<CoachUsage>('/coach/usage');
 }

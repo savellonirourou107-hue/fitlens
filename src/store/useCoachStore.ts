@@ -2,7 +2,7 @@
  * Coach chat store
  * - 24h 内消息历史（启动时拉一次）
  * - sendMessage: POST + 追加到 messages
- * - 限速 20/天，每次 send 后更新 remaining
+ * - AI 教练为不限次数模式，兼容旧版 usage 字段但不按次数拦截
  */
 import { create } from 'zustand';
 import * as coachApi from '../api/coach';
@@ -19,8 +19,9 @@ export interface ChatMessage {
 
 interface CoachState {
   messages: ChatMessage[];
-  remaining: number;
-  limit: number;
+  remaining: number | null;
+  limit: number | null;
+  unlimited: boolean;
   loading: 'idle' | 'sending' | 'history';
   error: string | null;
 
@@ -32,16 +33,34 @@ interface CoachState {
 
 export const useCoachStore = create<CoachState>((set, get) => ({
   messages: [],
-  remaining: 20,
-  limit: 20,
+  remaining: null,
+  limit: null,
+  unlimited: true,
   loading: 'idle',
   error: null,
 
   async loadHistory() {
     set({ loading: 'history', error: null });
     try {
-      const [msgs, usage] = await Promise.all([coachApi.getHistory(), coachApi.getUsage()]);
-      set({ messages: msgs, remaining: usage.remaining, limit: usage.limit, loading: 'idle' });
+      const msgs = await coachApi.getHistory();
+      let usage: coachApi.CoachUsage = {
+        used: null,
+        limit: null,
+        remaining: null,
+        unlimited: true,
+      };
+      try {
+        usage = await coachApi.getUsage();
+      } catch {
+        // 兼容旧后端没有 /coach/usage 的情况：历史能加载即可，不再因为额度接口阻断聊天。
+      }
+      set({
+        messages: msgs,
+        remaining: usage.remaining ?? null,
+        limit: usage.limit ?? null,
+        unlimited: usage.unlimited ?? true,
+        loading: 'idle',
+      });
     } catch (e) {
       const msg = e instanceof NetworkError
         ? '教练暂时不可用'
@@ -56,10 +75,6 @@ export const useCoachStore = create<CoachState>((set, get) => ({
     const trimmed = text.trim();
     if (!trimmed) return null;
     if (get().loading === 'sending') return null;
-    if (get().remaining <= 0) {
-      set({ error: '今日对话次数已用完，明天再来' });
-      return null;
-    }
     set({ error: null, loading: 'sending' });
     // 1) 立即追加用户消息
     const tempUserMsg: ChatMessage = {
@@ -78,7 +93,8 @@ export const useCoachStore = create<CoachState>((set, get) => ({
     };
     set((s) => ({ messages: [...s.messages, tempUserMsg, thinkingMsg] }));
     try {
-      const { reply, remaining } = await coachApi.sendChat(trimmed);
+      const response = await coachApi.sendChat(trimmed);
+      const { reply } = response;
       // 3) 替换占位为真实回复
       const assistantMsg: ChatMessage = {
         id: 'tmp-a-' + Date.now(),
@@ -88,7 +104,9 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       };
       set((s) => ({
         messages: s.messages.map((m) => (m.id === thinkingMsg.id ? assistantMsg : m)),
-        remaining,
+        remaining: response.remaining ?? s.remaining,
+        limit: response.limit ?? s.limit,
+        unlimited: response.unlimited ?? s.unlimited,
         loading: 'idle',
       }));
       return reply;

@@ -9,6 +9,7 @@ import { getToken, clearToken } from '../storage/secureStore';
 
 export const API_BASE_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BACKEND_URL) ||
   'https://fitlens-backend-v2.onrender.com';
 
 export const API_TIMEOUT_MS = 30_000;

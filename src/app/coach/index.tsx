@@ -1,7 +1,7 @@
 /**
  * AI 教练聊天页
  * - 消息列表 + 输入框
- * - 限速提示：今日还剩 X / 20
+ * - 不按每日次数限制发送
  * - 24h 后自动清空（后端负责）
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -17,8 +17,6 @@ import { ThinkingDots } from '../../components/ThinkingDots';
 
 export default function CoachScreen() {
   const messages = useCoachStore((s) => s.messages);
-  const remaining = useCoachStore((s) => s.remaining);
-  const limit = useCoachStore((s) => s.limit);
   const loading = useCoachStore((s) => s.loading);
   const error = useCoachStore((s) => s.error);
   const loadHistory = useCoachStore((s) => s.loadHistory);
@@ -58,11 +56,11 @@ export default function CoachScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen options={{ title: '减脂教练', headerShown: true }} />
+      <Stack.Screen options={{ title: 'AI 教练', headerShown: true }} />
       <View style={styles.headerBanner}>
         <Sparkles size={16} color={theme.colors.primaryDark} />
         <Text style={styles.headerText}>
-          小 F · 基于今日数据给建议 · 今日剩余 {remaining}/{limit}
+          小 F · 可连续对话 · 不限次数
         </Text>
         {messages.length > 0 && (
           <Pressable onPress={onClear} hitSlop={8}>
@@ -103,9 +101,9 @@ export default function CoachScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Sparkles size={48} color={theme.colors.textMuted} />
-              <Text style={styles.emptyTitle}>问小 F 一个减脂问题</Text>
+              <Text style={styles.emptyTitle}>问小 F 一个问题</Text>
               <Text style={styles.emptyHint}>
-                例子：{'\n'}· 我今天还能吃多少？{'\n'}· 怎么提高基础代谢？{'\n'}· 运动完饿了能吃什么？
+                例子：{'\n'}· 帮我分析今天的数据{'\n'}· 给我安排一个运动计划{'\n'}· 我想聊聊最近的状态
               </Text>
             </View>
           }
@@ -116,16 +114,15 @@ export default function CoachScreen() {
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder={remaining > 0 ? '输入消息…' : '今日次数已用完'}
-            editable={remaining > 0 && loading !== 'sending'}
+            placeholder="输入消息…"
+            editable={loading !== 'sending'}
             multiline
-            maxLength={500}
             onSubmitEditing={onSend}
             blurOnSubmit={false}
           />
           <Pressable
-            style={[styles.sendBtn, (!input.trim() || remaining <= 0 || loading === 'sending') && styles.sendBtnDisabled]}
-            disabled={!input.trim() || remaining <= 0 || loading === 'sending'}
+            style={[styles.sendBtn, (!input.trim() || loading === 'sending') && styles.sendBtnDisabled]}
+            disabled={!input.trim() || loading === 'sending'}
             onPress={onSend}
           >
             {loading === 'sending' ? (

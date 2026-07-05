@@ -1,6 +1,7 @@
 /**
  * /coach/* 路由
  * - POST /coach/chat  发消息
+ * - GET  /coach/usage  不限次数状态
  * - GET  /coach/history  拉历史
  * - DELETE /coach/history 清空
  *
@@ -19,8 +20,15 @@ import { error, ok } from '../utils.js';
 const router = Router();
 
 const chatSchema = z.object({
-  message: z.string().min(1).max(2000),
+  message: z.string().trim().min(1),
 });
+
+const unlimitedUsage = {
+  used: null,
+  limit: null,
+  remaining: null,
+  unlimited: true,
+};
 
 /** 计算今日聚合数字（不读明细） */
 async function getTodayContext(userId) {
@@ -69,7 +77,6 @@ router.post('/chat', requireAuth, async (req, res) => {
     WHERE user_id = ${req.userId}
       AND created_at > now() - INTERVAL '24 hours'
     ORDER BY created_at ASC
-    LIMIT 20
   `;
   const history = historyRows.map((r) => ({ role: r.role, content: r.content }));
 
@@ -93,7 +100,12 @@ router.post('/chat', requireAuth, async (req, res) => {
     INSERT INTO chat_messages (user_id, role, content) VALUES (${req.userId}, 'assistant', ${reply})
   `;
 
-  return ok(res, { reply });
+  return ok(res, { reply, ...unlimitedUsage });
+});
+
+/** GET /coach/usage - AI 教练不限次数，保留接口给前端显示状态 */
+router.get('/usage', requireAuth, async (req, res) => {
+  return ok(res, unlimitedUsage);
 });
 
 /** GET /coach/history - 24h 内的对话历史 */
@@ -103,7 +115,6 @@ router.get('/history', requireAuth, async (req, res) => {
     WHERE user_id = ${req.userId}
       AND created_at > now() - INTERVAL '24 hours'
     ORDER BY created_at ASC
-    LIMIT 100
   `;
   return ok(res, rows.map((r) => ({
     id: r.id,

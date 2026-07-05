@@ -16,6 +16,7 @@
         "buildType": "apk"
       },
       "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://fitlens-backend.onrender.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://fitlens-backend.onrender.com"
       }
     },
@@ -24,6 +25,7 @@
         "buildType": "app-bundle"
       },
       "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://fitlens-backend.onrender.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://fitlens-backend.onrender.com"
       }
     }

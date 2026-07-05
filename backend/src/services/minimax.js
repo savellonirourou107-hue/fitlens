@@ -402,22 +402,13 @@ export default { recognizeMeal, recognizeExercise, chatCoach, callLLM };
 /* ==================== AI 教练（聊天）==================== */
 
 /**
- * 系统 prompt：限制 LLM 只能聊减脂/营养/运动
- * - 不索取明细食物/体重/身份
- * - 不给医疗/极端节食建议
- * - 不允许比较他人数据
+ * 系统 prompt：AI 教练不做每日次数、固定话题或短回复拦截。
  */
-const COACH_SYSTEM_PROMPT = `你是 FitLens 减脂助手，名字叫"小 F"。
-你的职责：根据用户提供的今日/本周热量数据，给出**温和、专业、个性化**的减脂/营养/运动建议。
+const COACH_SYSTEM_PROMPT = `你是 FitLens AI 教练，名字叫"小 F"。
+你可以围绕用户提出的问题自然交流，不限定为减脂、营养或运动话题。
 
-**严格遵守的边界**：
-1. 你只能回答**减脂、营养、运动**相关的问题
-2. **不要**询问、推测、记录用户的：具体吃了什么食物名称、体重数值、身高、年龄、身份信息
-3. **不要**提供任何医疗诊断、药物建议、极端节食方案（如日摄入 < 800 kcal）
-4. **不要**和其他用户比较、排名、评判
-5. 如果用户问与减脂无关的问题（感情、工作、闲聊等），礼貌地引导回减脂话题
-6. 回复控制在 100 字以内，简明扼要，必要时用 1-2 个 emoji
-7. 涉及医学/疾病问题，必须建议用户咨询医生
+当问题和健康、饮食、运动、习惯、情绪或日常计划有关时，可以结合服务端提供的用户语境给出更具体的建议。
+当问题和 FitLens 数据无关时，直接回答用户当前问题，不要强行引导回某个固定主题。
 
 **用户语境**（服务端拼好传给你）：
 - 今日摄入 kcal
@@ -426,7 +417,8 @@ const COACH_SYSTEM_PROMPT = `你是 FitLens 减脂助手，名字叫"小 F"。
 - 近 7 天摄入/消耗/目标趋势
 - 净摄入（摄入 - 消耗）作为参考
 
-基于这些数字，**只输出建议**，不要重复数字本身。`;
+回答要清楚、具体、可执行。可以分点，也可以展开解释；不要为了凑短而省略关键依据。
+不要声称自己读取了服务端没有提供的隐私明细；缺少信息时，说明基于当前已知信息回答。`;
 
 /**
  * 教练聊天：调用 LLM 拿回复
@@ -458,8 +450,7 @@ export async function chatCoach(userMessage, history = [], userContext = {}) {
   }
   const contextBlock = '【用户语境】\n' + ctxLines.join('\n');
 
-  // 限制历史长度（最多 6 轮）
-  const recentHistory = Array.isArray(history) ? history.slice(-6) : [];
+  const recentHistory = Array.isArray(history) ? history : [];
 
   const messages = [
     { role: 'system', content: COACH_SYSTEM_PROMPT },
@@ -468,5 +459,8 @@ export async function chatCoach(userMessage, history = [], userContext = {}) {
     { role: 'user', content: userMessage },
   ];
 
-  return await callLLM(messages, { maxTokens: 400, temperature: 0.7 });
+  return await callLLM(messages, {
+    maxTokens: Number(process.env.COACH_MAX_TOKENS || 1500),
+    temperature: 0.7,
+  });
 }
