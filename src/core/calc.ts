@@ -20,6 +20,9 @@ import type {
 
 /** 从出生年份计算年龄 */
 export function ageFromBirthYear(birthYear: number, now: Date = new Date()): number {
+  if (!Number.isFinite(birthYear) || birthYear < 1900 || birthYear > new Date().getFullYear()) {
+    throw new Error(`非法出生年份: ${birthYear}`);
+  }
   return differenceInYears(now, new Date(birthYear, 0, 1));
 }
 
@@ -31,8 +34,15 @@ export function bmrHarrisBenedict(
   profile: Pick<UserProfile, 'sex' | 'weightKg' | 'heightCm' | 'birthYear'>,
   now: Date = new Date(),
 ): number {
-  const age = ageFromBirthYear(profile.birthYear, now);
   const { sex, weightKg, heightCm } = profile;
+  // 入口校验：阻断 NaN/Infinity/负数/超界输入沿调用链污染下游
+  if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 400) {
+    throw new Error(`非法体重: ${weightKg} kg`);
+  }
+  if (!Number.isFinite(heightCm) || heightCm < 80 || heightCm > 250) {
+    throw new Error(`非法身高: ${heightCm} cm`);
+  }
+  const age = ageFromBirthYear(profile.birthYear, now);
   if (sex === 'male') {
     return Math.round(88.362 + 13.397 * weightKg + 4.799 * heightCm - 5.677 * age);
   }
