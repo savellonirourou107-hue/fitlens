@@ -2,7 +2,7 @@
   "expo": {
     "name": "FitLens",
     "slug": "fitlens",
-    "version": "0.6.2",
+    "version": "0.6.3",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "fitlens",
@@ -20,6 +20,7 @@
         "backgroundColor": "#34D399"
       },
       "package": "com.fitlens.app",
+      "versionCode": 2,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
