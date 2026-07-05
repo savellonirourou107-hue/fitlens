@@ -70,7 +70,7 @@ router.post('/meal', upload.single('image'), async (req, res) => {
     return res.status(500).json({
       success: false,
       error: '识别失败',
-      message: err?.message,
+      message: '请稍后再试',
     });
   }
 });
@@ -107,7 +107,7 @@ router.post('/exercise', upload.single('image'), async (req, res) => {
     return res.status(500).json({
       success: false,
       error: '识别失败',
-      message: err?.message,
+      message: '请稍后再试',
     });
   }
 });
