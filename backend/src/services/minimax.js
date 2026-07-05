@@ -60,18 +60,39 @@ function parseModelJson(raw) {
     // 继续尝试提取第一个 {...}
   }
 
-  // 提取第一个完整的 JSON 对象（贪心匹配最外层大括号）
-  const objMatch = candidate.match(/\{[\s\S]*\}/);
-  if (objMatch) {
-    try {
-      return JSON.parse(objMatch[0]);
-    } catch (_) {
-      // 忽略，下面抛错
+  // 用括号深度计数提取第一个完整的 JSON 对象，避免贪心匹配跨段拼接
+  const firstBrace = candidate.indexOf('{');
+  if (firstBrace !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = firstBrace; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (escape) { escape = false; continue; }
+      if (inString) {
+        if (ch === '\\') escape = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidateObj = candidate.slice(firstBrace, i + 1);
+          try {
+            return JSON.parse(candidateObj);
+          } catch (_) {
+            // 这一个不合法，继续往下找下一个完整的 {...}
+            break;
+          }
+        }
+      }
     }
   }
 
-  // 兜底：模型可能没返回任何 JSON（例如纯文字描述），视为空结果
-  return { items: [] };
+  // 找不到任何完整 JSON 对象时，按 @throws 契约上抛
+  throw new Error('模型返回内容无法解析为 JSON');
 }
 
 /**
