@@ -51,9 +51,19 @@ export async function requireAuth(req, res, next) {
     });
   }
   // 校验 token_version：用户改过密码或退出所有设备后会自增
-  const rows = await sql`
-    SELECT id, token_version FROM users WHERE id = ${payload.sub} LIMIT 1
-  `;
+  let rows;
+  try {
+    rows = await sql`
+      SELECT id, token_version FROM users WHERE id = ${payload.sub} LIMIT 1
+    `;
+  } catch (e) {
+    // DB 不可达 / 网络抖动：与 401 区分，让前端可走 offline 模式
+    console.error('[requireAuth] db query failed:', e);
+    return res.status(503).json({
+      success: false,
+      error: { code: 'SERVICE_UNAVAILABLE', message: '认证服务暂不可用，请稍后再试' },
+    });
+  }
   if (rows.length === 0) {
     return res.status(401).json({
       success: false,
