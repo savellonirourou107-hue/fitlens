@@ -42,11 +42,20 @@ router.post('/register', async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 12);
   const avatarSeed = randomString(4);
 
-  const inserted = await sql`
-    INSERT INTO users (email, password_hash, nickname, avatar_seed)
-    VALUES (${email}, ${passwordHash}, ${nickname}, ${avatarSeed})
-    RETURNING id, email, nickname, avatar_seed, token_version, created_at
-  `;
+  let inserted;
+  try {
+    inserted = await sql`
+      INSERT INTO users (email, password_hash, nickname, avatar_seed)
+      VALUES (${email}, ${passwordHash}, ${nickname}, ${avatarSeed})
+      RETURNING id, email, nickname, avatar_seed, token_version, created_at
+    `;
+  } catch (e) {
+    // 并发同邮箱注册：SELECT-then-INSERT 漏过的竞态；PG 23505 = unique_violation
+    if (e && (e.code === '23505' || /duplicate key/i.test(String(e.message)))) {
+      return error(res, 409, 'EMAIL_TAKEN', '该邮箱已被注册');
+    }
+    throw e;
+  }
   const user = inserted[0];
   const token = signToken(user.id, user.token_version);
 
