@@ -61,17 +61,22 @@ async function getTodayContext(userId) {
   };
 }
 
-/** 检查/累加今日使用次数 */
-async function checkAndIncrementUsage(userId) {
+/** 读取今日已用次数（不写入，避免被拒请求预扣配额） */
+async function getCurrentUsage(userId) {
   const today = new Date().toISOString().slice(0, 10);
-  await sql`
-    INSERT INTO chat_usage (user_id, date, count) VALUES (${userId}, ${today}, 1)
-    ON CONFLICT (user_id, date) DO UPDATE SET count = chat_usage.count + 1
-  `;
   const rows = await sql`
     SELECT count FROM chat_usage WHERE user_id = ${userId} AND date = ${today}
   `;
   return rows[0]?.count ?? 0;
+}
+
+/** +1 今日使用次数（与 INSERT chat_messages 配对，在事务中原子提交） */
+function incrementUsageQuery(userId) {
+  const today = new Date().toISOString().slice(0, 10);
+  return sql`
+    INSERT INTO chat_usage (user_id, date, count) VALUES (${userId}, ${today}, 1)
+    ON CONFLICT (user_id, date) DO UPDATE SET count = chat_usage.count + 1
+  `;
 }
 
 /** POST /coach/chat */
@@ -82,9 +87,9 @@ router.post('/chat', requireAuth, async (req, res) => {
   }
   const { message } = parsed.data;
 
-  // 限速
-  const count = await checkAndIncrementUsage(req.userId);
-  if (count > DAILY_LIMIT) {
+  // 限速：先 SELECT 不预扣；超限直接 429 不入库
+  const usedBefore = await getCurrentUsage(req.userId);
+  if (usedBefore >= DAILY_LIMIT) {
     return error(res, 429, 'RATE_LIMIT', `今日对话次数已用完（${DAILY_LIMIT} 次/天）`);
   }
 
@@ -101,7 +106,7 @@ router.post('/chat', requireAuth, async (req, res) => {
   // 收集用户语境（只读 daily_summaries）
   const ctx = await getTodayContext(req.userId);
 
-  // 存用户消息
+  // 存用户消息（计费前；失败则不扣配额）
   await sql`
     INSERT INTO chat_messages (user_id, role, content) VALUES (${req.userId}, 'user', ${message})
   `;
@@ -114,14 +119,15 @@ router.post('/chat', requireAuth, async (req, res) => {
     return error(res, 502, 'LLM_FAILED', e instanceof Error ? e.message : '教练暂时不可用，请稍后再试');
   }
 
-  // 存教练回复
-  await sql`
-    INSERT INTO chat_messages (user_id, role, content) VALUES (${req.userId}, 'assistant', ${reply})
-  `;
+  // 存教练回复 + +1 配额 在同一事务，LLM 抛错时不会预扣
+  await sql.transaction([
+    sql`INSERT INTO chat_messages (user_id, role, content) VALUES (${req.userId}, 'assistant', ${reply})`,
+    incrementUsageQuery(req.userId),
+  ]);
 
   return ok(res, {
     reply,
-    remaining: Math.max(0, DAILY_LIMIT - count),
+    remaining: Math.max(0, DAILY_LIMIT - usedBefore - 1),
   });
 });
 
